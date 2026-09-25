@@ -127,6 +127,27 @@ deep-links to Settings. If the user **backs out**, the view reports
 `onResult(.failure(.cancelled))` — distinct from a real failure, so you can tell
 "user quit" apart from an error.
 
+## Privacy manifest
+
+The SDK ships an Apple privacy manifest (`PrivacyInfo.xcprivacy`), which Xcode
+includes in your app's privacy report. It declares the data the SDK sends to
+deepidv — all linked to the user, used for app functionality (identity
+verification and fraud prevention), and never for tracking:
+
+- **Photos or Videos** — ID document images, selfies, liveness frames, and the
+  liveness replay clip.
+- **Sensitive Info** — biometric use of face images (face match, liveness, face
+  search).
+- **Name, Email Address, Phone Number** — the `WorkflowUser` fields, when the SDK
+  creates a workflow session.
+
+The SDK uses none of Apple's required-reason APIs.
+
+Two values are sent only when **your app** supplies them, so declare them in
+your own manifest if you use them: the `deviceFingerprint` passed to
+`checkAntiCheat` (Device ID — see [Device fingerprints](#device-fingerprints)) and
+the `ipAddress` passed to `checkVPN` / `checkIPJurisdiction`.
+
 ## Workflows
 
 `DeepIDVWorkflowView` runs a server-defined verification workflow — for example
