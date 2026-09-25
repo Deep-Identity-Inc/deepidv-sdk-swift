@@ -49,6 +49,8 @@ targets: [
 
 The package exposes a single product, **`DeepIDV`**.
 
+Release notes for every version are in [CHANGELOG.md](CHANGELOG.md).
+
 ## Quick start
 
 Configure a client with your `x-api-key`, then call one of the headless methods.
