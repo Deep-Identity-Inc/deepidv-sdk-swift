@@ -28,7 +28,10 @@ let package = Package(
         // ── DeepIDV: public-facing umbrella (UI + top-level namespace). ───────
         .target(
             name: "DeepIDV",
-            dependencies: ["DeepIDVCore"]
+            dependencies: ["DeepIDVCore"],
+            // Apple privacy manifest for the whole SDK (DeepIDVCore ships inside
+            // this product, so one manifest covers both targets).
+            resources: [.copy("PrivacyInfo.xcprivacy")]
         ),
         // ── One test target per source target. ───────────────────────────────
         .testTarget(
