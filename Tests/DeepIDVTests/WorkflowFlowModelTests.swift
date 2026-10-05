@@ -23,6 +23,14 @@ private func livenessRequirements() -> StepRequirements {
             confidenceThreshold: 70))
 }
 
+private let documentFailure = WorkflowFailure(
+    code: .idTextNotReadable,
+    category: .document,
+    userAction: .retakeDocument,
+    isRetryable: false,
+    slot: .primary,
+    message: "ID text not readable")
+
 private func plan(
     _ stepID: WorkflowStepID,
     requirements: StepRequirements
@@ -45,7 +53,7 @@ private func executionState() -> WorkflowExecutionState {
                 attempts: 1,
                 startedAt: nil,
                 completedAt: nil,
-                failureReason: nil,
+                failure: nil,
                 requirements: idRequirements()),
             WorkflowStepState(
                 stepID: .faceLiveness,
@@ -53,7 +61,7 @@ private func executionState() -> WorkflowExecutionState {
                 attempts: 1,
                 startedAt: nil,
                 completedAt: nil,
-                failureReason: nil,
+                failure: nil,
                 requirements: livenessRequirements()),
         ],
         currentStep: nil,
@@ -131,7 +139,7 @@ func workflowUsesEnvelopeCurrentStepAndFinalState() async {
         WorkflowStepOutcome(
             stepID: .idVerification,
             stepStatus: .completed,
-            failureReason: nil,
+            failure: nil,
             currentStep: 1,
             attemptsRemaining: 2,
             sessionStatus: .pending,
@@ -143,7 +151,7 @@ func workflowUsesEnvelopeCurrentStepAndFinalState() async {
         WorkflowStepOutcome(
             stepID: .faceLiveness,
             stepStatus: .completed,
-            failureReason: nil,
+            failure: nil,
             currentStep: nil,
             attemptsRemaining: 2,
             sessionStatus: .submitted,
@@ -259,7 +267,7 @@ func exhaustedAttemptBudgetReturnsSuccessfulFailedRun() async {
                 attempts: 3,
                 startedAt: nil,
                 completedAt: nil,
-                failureReason: "DOCUMENT_MISMATCH",
+                failure: documentFailure,
                 requirements: idRequirements())
         ],
         currentStep: nil,
@@ -273,7 +281,7 @@ func exhaustedAttemptBudgetReturnsSuccessfulFailedRun() async {
         WorkflowStepOutcome(
             stepID: .idVerification,
             stepStatus: .failed,
-            failureReason: "DOCUMENT_MISMATCH",
+            failure: documentFailure,
             currentStep: nil,
             attemptsRemaining: 0,
             sessionStatus: .failed,
@@ -285,7 +293,7 @@ func exhaustedAttemptBudgetReturnsSuccessfulFailedRun() async {
     #expect(spy.value?.sessionStatus == .failed)
     #expect(spy.value?.sessionProgress == .completed)
     #expect(spy.value?.steps.first?.attempts == 3)
-    #expect(spy.value?.steps.first?.failureReason == "DOCUMENT_MISMATCH")
+    #expect(spy.value?.steps.first?.failure == documentFailure)
 }
 
 @MainActor @Test
@@ -308,7 +316,7 @@ func finalStateReadFailureFallsBackToTerminalEnvelope() async {
         WorkflowStepOutcome(
             stepID: .idVerification,
             stepStatus: .failed,
-            failureReason: "DOCUMENT_MISMATCH",
+            failure: documentFailure,
             currentStep: nil,
             attemptsRemaining: 0,
             sessionStatus: .failed,
@@ -321,7 +329,7 @@ func finalStateReadFailureFallsBackToTerminalEnvelope() async {
     #expect(spy.value?.sessionStatus == .failed)
     #expect(spy.value?.steps.first?.status == .failed)
     #expect(spy.value?.steps.first?.attempts == 2)
-    #expect(spy.value?.steps.first?.failureReason == "DOCUMENT_MISMATCH")
+    #expect(spy.value?.steps.first?.failure == documentFailure)
 }
 
 @MainActor @Test
@@ -345,7 +353,7 @@ func conflictResyncsToServerCurrentStep() async {
                 attempts: 1,
                 startedAt: nil,
                 completedAt: nil,
-                failureReason: nil,
+                failure: nil,
                 requirements: idRequirements()),
             WorkflowStepState(
                 stepID: .faceLiveness,
@@ -353,7 +361,7 @@ func conflictResyncsToServerCurrentStep() async {
                 attempts: 0,
                 startedAt: nil,
                 completedAt: nil,
-                failureReason: nil,
+                failure: nil,
                 requirements: livenessRequirements()),
         ],
         currentStep: 1,
@@ -386,7 +394,7 @@ func conflictResyncsToServerCurrentStep() async {
         WorkflowStepOutcome(
             stepID: .faceLiveness,
             stepStatus: .completed,
-            failureReason: nil,
+            failure: nil,
             currentStep: nil,
             attemptsRemaining: 2,
             sessionStatus: .submitted,
@@ -417,7 +425,7 @@ func fallbackPreservesAttemptsConfirmedDuringConflictResync() async {
                 attempts: 1,
                 startedAt: nil,
                 completedAt: nil,
-                failureReason: "DOCUMENT_MISMATCH",
+                failure: documentFailure,
                 requirements: idRequirements())
         ],
         currentStep: 0,
@@ -448,7 +456,7 @@ func fallbackPreservesAttemptsConfirmedDuringConflictResync() async {
         WorkflowStepOutcome(
             stepID: .idVerification,
             stepStatus: .completed,
-            failureReason: nil,
+            failure: nil,
             currentStep: nil,
             attemptsRemaining: 1,
             sessionStatus: .submitted,
@@ -477,7 +485,7 @@ func secondConsecutiveConflictEndsRun() async {
                 attempts: 0,
                 startedAt: nil,
                 completedAt: nil,
-                failureReason: nil,
+                failure: nil,
                 requirements: idRequirements())
         ],
         currentStep: 0,
@@ -535,6 +543,10 @@ func terminalSessionConflictFailsWithoutResync() async {
                 failureReason: nil)))
 
     #expect(states.calls == 0)
+    #expect(resultSpy.results.isEmpty)
+    #expect(model.canRetryStepError == false)
+
+    model.dismissStepError()
     #expect(resultSpy.results.count == 1)
     #expect(resultSpy.failureKind == .conflict)
 }
@@ -554,7 +566,7 @@ private func bootstrapState(currentStep: Int? = 0) -> WorkflowExecutionState {
                 attempts: 0,
                 startedAt: nil,
                 completedAt: nil,
-                failureReason: nil,
+                failure: nil,
                 requirements: idRequirements()),
             WorkflowStepState(
                 stepID: .faceLiveness,
@@ -562,7 +574,7 @@ private func bootstrapState(currentStep: Int? = 0) -> WorkflowExecutionState {
                 attempts: 0,
                 startedAt: nil,
                 completedAt: nil,
-                failureReason: nil,
+                failure: nil,
                 requirements: livenessRequirements()),
         ],
         currentStep: currentStep,
@@ -694,7 +706,7 @@ func sessionBootstrappedRunCompletesLikeACreatedRun() async {
         WorkflowStepOutcome(
             stepID: .idVerification,
             stepStatus: .completed,
-            failureReason: nil,
+            failure: nil,
             currentStep: 1,
             attemptsRemaining: 2,
             sessionStatus: .pending,
@@ -706,7 +718,7 @@ func sessionBootstrappedRunCompletesLikeACreatedRun() async {
         WorkflowStepOutcome(
             stepID: .faceLiveness,
             stepStatus: .completed,
-            failureReason: nil,
+            failure: nil,
             currentStep: nil,
             attemptsRemaining: 2,
             sessionStatus: .submitted,
@@ -744,7 +756,7 @@ func cancellationDuringFinalReadWinsExactlyOnce() async {
         WorkflowStepOutcome(
             stepID: .idVerification,
             stepStatus: .completed,
-            failureReason: nil,
+            failure: nil,
             currentStep: nil,
             attemptsRemaining: 1,
             sessionStatus: .submitted,
@@ -756,4 +768,514 @@ func cancellationDuringFinalReadWinsExactlyOnce() async {
 
     #expect(resultSpy.results.count == 1)
     #expect(resultSpy.failureKind == .cancelled)
+}
+
+// MARK: - Mid-run errors
+
+private func singleIDSession() -> WorkflowSession {
+    WorkflowSession(
+        sessionID: "sess-1",
+        expiresAt: nil,
+        steps: [plan(.idVerification, requirements: idRequirements())],
+        currentStep: 0)
+}
+
+/// A started session whose ID step is done and whose liveness step is current.
+private func midRunState(
+    livenessStatus: WorkflowStepStatus = .pending,
+    livenessAttempts: Int = 0,
+    livenessFailure: WorkflowFailure? = nil,
+    attemptsRemaining: Int? = 2
+) -> WorkflowExecutionState {
+    WorkflowExecutionState(
+        sessionID: "sess-1",
+        status: .pending,
+        sessionProgress: .started,
+        steps: [
+            WorkflowStepState(
+                stepID: .idVerification,
+                status: .completed,
+                attempts: 2,
+                startedAt: nil,
+                completedAt: nil,
+                failure: nil,
+                requirements: idRequirements()),
+            WorkflowStepState(
+                stepID: .faceLiveness,
+                status: livenessStatus,
+                attempts: livenessAttempts,
+                startedAt: nil,
+                completedAt: nil,
+                failure: livenessFailure,
+                requirements: livenessRequirements()),
+        ],
+        currentStep: 1,
+        attemptsRemaining: attemptsRemaining)
+}
+
+@MainActor @Test
+func fatalStepErrorShowsErrorScreenAndReportsOnceOnClose() async {
+    let states = WorkflowStateSpy(results: [])
+    let spy = WorkflowResultSpy()
+    let model = WorkflowFlowModel(
+        create: { singleIDSession() },
+        fetchState: { _ in try await states.fetch() },
+        supportsStep: { $0 == .idVerification },
+        onResult: { spy.results.append($0) })
+    let error = DeepIDVError.validation("Bad upload", apiCode: .invalidMedia)
+
+    model.start()
+    await model.awaitPendingWork()
+    model.stepFailed(error)
+
+    #expect(model.phase == .stepError(error))
+    #expect(spy.results.isEmpty)
+    #expect(model.canRetryStepError == false)
+
+    // The retry the screen does not offer is refused outright.
+    model.retryAfterStepError()
+    await model.awaitPendingWork()
+    #expect(states.calls == 0)
+    #expect(model.phase == .stepError(error))
+
+    model.dismissStepError()
+    model.dismissStepError()
+    model.cancel()
+
+    #expect(model.phase == .finished)
+    #expect(spy.results.count == 1)
+    #expect(spy.results.first == .failure(error))
+}
+
+@MainActor @Test
+func stepCancellationStillEndsTheRunImmediately() async {
+    let spy = WorkflowResultSpy()
+    let model = makeModel(session: singleIDSession(), resultSpy: spy)
+
+    model.start()
+    await model.awaitPendingWork()
+    model.stepFailed(.cancelled("Identity verification was cancelled."))
+
+    #expect(model.phase == .finished)
+    #expect(spy.results.count == 1)
+    #expect(spy.failureKind == .cancelled)
+}
+
+@MainActor @Test
+func transientStepErrorOffersRetryOnlyForTransientKinds() async {
+    let cases: [(DeepIDVError, Bool)] = [
+        (.network("offline"), true),
+        (.timeout("slow"), true),
+        (.rateLimit("busy"), true),
+        (.serviceUnavailable("down"), true),
+        (.api("Bad Gateway", status: 502), true),
+        (.api("Teapot", status: 418), false),
+        (.validation("bad"), false),
+        (.authentication("nope"), false),
+        (.captureFailed("camera"), false),
+        (.cameraPermissionDenied("denied"), false),
+        (.notFound("gone"), false),
+    ]
+    for (error, expected) in cases {
+        let spy = WorkflowResultSpy()
+        let model = makeModel(session: singleIDSession(), resultSpy: spy)
+
+        model.start()
+        await model.awaitPendingWork()
+        model.stepFailed(error)
+
+        #expect(model.phase == .stepError(error))
+        #expect(model.canRetryStepError == expected)
+        #expect(spy.results.isEmpty)
+    }
+}
+
+@MainActor @Test
+func tryAgainAfterTransientStepErrorResumesTheCurrentStep() async {
+    let session = WorkflowSession(
+        sessionID: "sess-1",
+        expiresAt: nil,
+        steps: [
+            plan(.idVerification, requirements: idRequirements()),
+            plan(.faceLiveness, requirements: livenessRequirements()),
+        ],
+        currentStep: 0)
+    let states = WorkflowStateSpy(results: [.success(midRunState(attemptsRemaining: 1))])
+    let spy = WorkflowResultSpy()
+    let model = WorkflowFlowModel(
+        create: { session },
+        fetchState: { _ in try await states.fetch() },
+        supportsStep: { $0 == .idVerification || $0 == .faceLiveness },
+        onResult: { spy.results.append($0) })
+
+    model.start()
+    await model.awaitPendingWork()
+    let generation = model.renderGeneration
+    model.stepFailed(.network("offline"))
+    #expect(model.canRetryStepError)
+
+    model.retryAfterStepError()
+    #expect(model.phase == .resyncing)
+    await model.awaitPendingWork()
+
+    // The server had already moved on to the next step.
+    #expect(states.calls == 1)
+    #expect(model.phase == .runningStep(index: 1))
+    #expect(model.attemptsRemaining == 1)
+    #expect(model.renderGeneration > generation)
+    #expect(spy.results.isEmpty)
+}
+
+@MainActor @Test
+func tryAgainIntoATerminalStateFinalizes() async {
+    let states = WorkflowStateSpy(results: [.success(executionState())])
+    let spy = WorkflowResultSpy()
+    let model = WorkflowFlowModel(
+        create: { singleIDSession() },
+        fetchState: { _ in try await states.fetch() },
+        supportsStep: { $0 == .idVerification },
+        onResult: { spy.results.append($0) })
+
+    model.start()
+    await model.awaitPendingWork()
+    model.stepFailed(.timeout("slow"))
+    model.retryAfterStepError()
+    await model.awaitPendingWork()
+
+    #expect(model.phase == .finished)
+    #expect(spy.results.count == 1)
+    #expect(spy.value?.sessionStatus == .submitted)
+}
+
+@MainActor @Test
+func failedTryAgainReturnsToTheErrorScreenWithTheNewError() async {
+    let states = WorkflowStateSpy(
+        results: [
+            .failure(.serviceUnavailable("down")),
+            .failure(.authentication("revoked")),
+        ])
+    let spy = WorkflowResultSpy()
+    let model = WorkflowFlowModel(
+        create: { singleIDSession() },
+        fetchState: { _ in try await states.fetch() },
+        supportsStep: { $0 == .idVerification },
+        onResult: { spy.results.append($0) })
+
+    model.start()
+    await model.awaitPendingWork()
+    model.stepFailed(.network("offline"))
+
+    model.retryAfterStepError()
+    await model.awaitPendingWork()
+    #expect(model.phase == .stepError(.serviceUnavailable("down")))
+    #expect(model.canRetryStepError)
+
+    model.retryAfterStepError()
+    await model.awaitPendingWork()
+    #expect(model.phase == .stepError(.authentication("revoked")))
+    #expect(model.canRetryStepError == false)
+    #expect(spy.results.isEmpty)
+
+    model.dismissStepError()
+    #expect(spy.results.count == 1)
+    #expect(spy.failureKind == .authentication)
+}
+
+@MainActor @Test
+func cancelDuringStepErrorReportsCancelledOnce() async {
+    let spy = WorkflowResultSpy()
+    let model = makeModel(session: singleIDSession(), resultSpy: spy)
+
+    model.start()
+    await model.awaitPendingWork()
+    model.stepFailed(.validation("bad"))
+    model.cancel()
+    model.dismissStepError()
+    model.cancel()
+
+    #expect(model.phase == .finished)
+    #expect(spy.results.count == 1)
+    #expect(spy.failureKind == .cancelled)
+}
+
+// MARK: - Session failure on results
+
+private let exhaustedSessionFailure = WorkflowSessionFailure(
+    code: .attemptsExhausted,
+    stepID: .idVerification,
+    failure: documentFailure)
+
+@MainActor @Test
+func exhaustedRunResultCarriesSessionFailure() async {
+    let failedState = WorkflowExecutionState(
+        sessionID: "sess-1",
+        status: .failed,
+        sessionProgress: .completed,
+        steps: [
+            WorkflowStepState(
+                stepID: .idVerification,
+                status: .failed,
+                attempts: 3,
+                startedAt: nil,
+                completedAt: nil,
+                failure: documentFailure,
+                requirements: idRequirements())
+        ],
+        currentStep: nil,
+        attemptsRemaining: 0,
+        sessionFailure: exhaustedSessionFailure)
+    let spy = WorkflowResultSpy()
+    let model = makeModel(session: singleIDSession(), state: failedState, resultSpy: spy)
+
+    model.start()
+    await model.awaitPendingWork()
+    model.stepCompleted(
+        WorkflowStepOutcome(
+            stepID: .idVerification,
+            stepStatus: .failed,
+            failure: documentFailure,
+            sessionFailure: exhaustedSessionFailure,
+            currentStep: nil,
+            attemptsRemaining: 0,
+            sessionStatus: .failed,
+            sessionProgress: .completed,
+            attempts: 3))
+    await model.awaitPendingWork()
+
+    #expect(spy.results.count == 1)
+    #expect(spy.value?.sessionFailure == exhaustedSessionFailure)
+    #expect(spy.value?.sessionFailure?.code == .attemptsExhausted)
+    #expect(spy.value?.sessionFailure?.stepID == .idVerification)
+    #expect(spy.value?.sessionFailure?.failure == documentFailure)
+    #expect(spy.value?.steps.first?.failure == documentFailure)
+}
+
+@MainActor @Test
+func fallbackResultPassesSessionFailureThroughFromTheLastOutcome() async {
+    let spy = WorkflowResultSpy()
+    let model = WorkflowFlowModel(
+        create: { singleIDSession() },
+        fetchState: { _ in throw DeepIDVError.network("offline") },
+        supportsStep: { $0 == .idVerification },
+        onResult: { spy.results.append($0) })
+
+    model.start()
+    await model.awaitPendingWork()
+    model.stepCompleted(
+        WorkflowStepOutcome(
+            stepID: .idVerification,
+            stepStatus: .failed,
+            failure: documentFailure,
+            sessionFailure: exhaustedSessionFailure,
+            currentStep: nil,
+            attemptsRemaining: 0,
+            sessionStatus: .failed,
+            sessionProgress: .completed,
+            attempts: 3))
+    await model.awaitPendingWork()
+
+    #expect(spy.results.count == 1)
+    #expect(spy.value?.sessionFailure == exhaustedSessionFailure)
+    #expect(spy.value?.steps.first?.failure == documentFailure)
+}
+
+// MARK: - Resume by sessionID
+
+@MainActor @Test
+func resumedRunStartsAtServerCurrentStepWithServerAttempts() async {
+    let spy = WorkflowResultSpy()
+    let model = WorkflowFlowModel(
+        resume: {
+            midRunState(
+                livenessStatus: .inProgress,
+                livenessAttempts: 1,
+                livenessFailure: WorkflowFailure(
+                    code: .livenessFailed,
+                    category: .liveness,
+                    userAction: .retryLiveness,
+                    isRetryable: true,
+                    message: "Liveness check failed"),
+                attemptsRemaining: 1)
+        },
+        fetchState: { _ in executionState() },
+        supportsStep: { $0 == .idVerification || $0 == .faceLiveness },
+        onResult: { spy.results.append($0) })
+
+    model.start()
+    await model.awaitPendingWork()
+
+    // An in-progress step with a stored failure renders as a fresh step, not
+    // as a retry screen.
+    #expect(model.phase == .runningStep(index: 1))
+    #expect(model.sessionID == "sess-1")
+    #expect(model.currentStepPlan?.stepID == .faceLiveness)
+    #expect(model.attemptsRemaining == 1)
+    #expect(spy.results.isEmpty)
+}
+
+@MainActor @Test
+func resumedRunResultIncludesStepsCompletedBeforeTheResume() async {
+    // The final read fails, so the result is assembled from what the run saw.
+    let spy = WorkflowResultSpy()
+    let model = WorkflowFlowModel(
+        resume: { midRunState() },
+        fetchState: { _ in throw DeepIDVError.network("offline") },
+        supportsStep: { $0 == .idVerification || $0 == .faceLiveness },
+        onResult: { spy.results.append($0) })
+
+    model.start()
+    await model.awaitPendingWork()
+    model.stepCompleted(
+        WorkflowStepOutcome(
+            stepID: .faceLiveness,
+            stepStatus: .completed,
+            failure: nil,
+            currentStep: nil,
+            attemptsRemaining: 2,
+            sessionStatus: .submitted,
+            sessionProgress: .completed,
+            attempts: 1))
+    await model.awaitPendingWork()
+
+    #expect(spy.results.count == 1)
+    #expect(spy.value?.sessionStatus == .submitted)
+    #expect(spy.value?.steps.map(\.stepID) == [.idVerification, .faceLiveness])
+    #expect(spy.value?.steps.map(\.status) == [.completed, .completed])
+    #expect(spy.value?.steps.first?.attempts == 2)
+}
+
+@MainActor @Test
+func resumedRunCompletesWithTheFinalServerState() async {
+    let states = WorkflowStateSpy(results: [.success(executionState())])
+    let spy = WorkflowResultSpy()
+    let model = WorkflowFlowModel(
+        resume: { midRunState() },
+        fetchState: { _ in try await states.fetch() },
+        supportsStep: { $0 == .idVerification || $0 == .faceLiveness },
+        onResult: { spy.results.append($0) })
+
+    model.start()
+    await model.awaitPendingWork()
+    model.stepCompleted(
+        WorkflowStepOutcome(
+            stepID: .faceLiveness,
+            stepStatus: .completed,
+            failure: nil,
+            currentStep: nil,
+            attemptsRemaining: 2,
+            sessionStatus: .submitted,
+            sessionProgress: .completed,
+            attempts: 1))
+    await model.awaitPendingWork()
+
+    #expect(states.calls == 1)
+    #expect(spy.value?.steps.count == 2)
+    #expect(spy.value?.sessionStatus == .submitted)
+}
+
+@MainActor @Test
+func resumingATerminalSessionLandsOnTheEntryErrorWithNoRetry() async {
+    final class ResumeSpy: @unchecked Sendable {
+        var calls = 0
+    }
+    let resumes = ResumeSpy()
+    let spy = WorkflowResultSpy()
+    let terminal = DeepIDVError.conflict(
+        "The session has already finished and cannot be resumed.",
+        info: ConflictInfo(currentStep: nil, stepID: nil, failureReason: nil),
+        apiCode: .sessionTerminal)
+    let model = WorkflowFlowModel(
+        resume: {
+            resumes.calls += 1
+            throw terminal
+        },
+        fetchState: { _ in executionState() },
+        supportsStep: { _ in true },
+        onResult: { spy.results.append($0) })
+
+    model.start()
+    await model.awaitPendingWork()
+
+    #expect(model.phase == .failed(terminal))
+    #expect(model.canRetryEntry == false)
+
+    model.retryEntry()
+    await model.awaitPendingWork()
+    #expect(resumes.calls == 1)
+    #expect(spy.results.isEmpty)
+
+    model.dismissFailure()
+    #expect(spy.results.count == 1)
+    #expect(spy.results.first == .failure(terminal))
+}
+
+@MainActor @Test
+func transientResumeFailureRetriesTheResumeCall() async {
+    final class ResumeSpy: @unchecked Sendable {
+        var calls = 0
+    }
+    let resumes = ResumeSpy()
+    let spy = WorkflowResultSpy()
+    let model = WorkflowFlowModel(
+        resume: {
+            resumes.calls += 1
+            if resumes.calls == 1 { throw DeepIDVError.network("offline") }
+            return midRunState()
+        },
+        fetchState: { _ in executionState() },
+        supportsStep: { _ in true },
+        onResult: { spy.results.append($0) })
+
+    model.start()
+    await model.awaitPendingWork()
+    #expect(model.canRetryEntry)
+
+    model.retryEntry()
+    await model.awaitPendingWork()
+
+    #expect(resumes.calls == 2)
+    #expect(model.phase == .runningStep(index: 1))
+    #expect(spy.results.isEmpty)
+}
+
+@MainActor @Test
+func resumedRunWithAnUnsupportedCurrentStepFailsFast() async {
+    let spy = WorkflowResultSpy()
+    let model = WorkflowFlowModel(
+        resume: { midRunState() },
+        fetchState: { _ in executionState() },
+        supportsStep: { $0 == .idVerification },
+        onResult: { spy.results.append($0) })
+
+    model.start()
+    await model.awaitPendingWork()
+
+    #expect(spy.results.count == 1)
+    #expect(spy.failureKind == .validation)
+}
+
+@MainActor @Test
+func conflictDuringAResumedRunUsesTheExistingResync() async {
+    let states = WorkflowStateSpy(results: [.success(midRunState())])
+    let spy = WorkflowResultSpy()
+    let model = WorkflowFlowModel(
+        resume: { bootstrapState(currentStep: 0) },
+        fetchState: { _ in try await states.fetch() },
+        supportsStep: { $0 == .idVerification || $0 == .faceLiveness },
+        onResult: { spy.results.append($0) })
+
+    model.start()
+    await model.awaitPendingWork()
+    #expect(model.phase == .runningStep(index: 0))
+
+    model.stepFailed(
+        .conflict(
+            "Concurrent submission",
+            info: ConflictInfo(currentStep: 1, stepID: "FACE_LIVENESS", failureReason: nil),
+            apiCode: .stepConflict))
+    await model.awaitPendingWork()
+
+    #expect(states.calls == 1)
+    #expect(model.phase == .runningStep(index: 1))
+    #expect(spy.results.isEmpty)
 }

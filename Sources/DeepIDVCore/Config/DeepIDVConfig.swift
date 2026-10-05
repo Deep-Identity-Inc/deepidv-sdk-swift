@@ -3,6 +3,7 @@
 import Foundation
 
 /// Which camera the document-capture step opens.
+@nonexhaustive
 public enum DocumentCamera: String, Sendable, Equatable {
     /// The rear camera (default) — the user points the device at the document.
     case back

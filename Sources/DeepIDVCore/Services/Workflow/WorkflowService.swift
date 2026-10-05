@@ -62,6 +62,27 @@ public struct WorkflowService: Sendable {
     public func startRun(sessionID: String) async throws -> WorkflowExecutionState {
         try await client.post("/v1/sessions/\(sessionID)/workflow/start", body: EmptyBody())
     }
+
+    /// Resumes an existing headless session from its current step.
+    ///
+    /// Reads `GET /v1/sessions/{session_id}/workflow` and returns the execution
+    /// state the run continues from. Unlike ``startRun(sessionID:)``, the session
+    /// may already have been started — for example after the applicant cancelled
+    /// at a retry screen, the app was killed, or a run ended on an error — and an
+    /// un-started session resumes from its first step. The session keeps its
+    /// attempt budget; resuming never resets it.
+    ///
+    /// Read-only: nothing is written until the resumed step is submitted, so the
+    /// call is safe to repeat. A terminal session (submitted, completed, failed or
+    /// expired) cannot be resumed and throws ``DeepIDVError/Kind/conflict`` with
+    /// ``DeepIDVError/apiCode`` set to ``APIErrorCode/sessionTerminal``. A session
+    /// that was not created as a headless workflow session throws
+    /// ``DeepIDVError/Kind/notFound``.
+    public func resumeRun(sessionID: String) async throws -> WorkflowExecutionState {
+        let state = try await fetchState(sessionID: sessionID)
+        guard !state.isTerminal else { throw DeepIDVError.sessionTerminal() }
+        return state
+    }
 }
 
 // MARK: - Start body

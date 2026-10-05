@@ -115,7 +115,7 @@ final class IDVerificationStepFlowModel: ObservableObject {
             captureMode: CaptureMode)
         case capturingSelfie
         case submitting
-        case retry(failureReason: String?, attemptsRemaining: Int?)
+        case retry(failure: WorkflowFailure?, attemptsRemaining: Int?)
         case finished
     }
 
@@ -146,6 +146,10 @@ final class IDVerificationStepFlowModel: ObservableObject {
     private var selections: [IDVerificationDocumentSlot: WorkflowDocumentTypeOption] = [:]
     private var captures: [IDVerificationDocumentSlot: Capture] = [:]
     private var selfie: FileInput?
+    /// Document upload keys from the last upload, kept so a selfie-only retry
+    /// can resubmit them without uploading the documents again.
+    private var documentUploadKeys: [SessionUploadSlot: String] = [:]
+    private var reusesDocumentUploads = false
     private var task: Task<Void, Never>?
     private var hasCompleted = false
     private var hasStarted = false
@@ -196,12 +200,7 @@ final class IDVerificationStepFlowModel: ObservableObject {
 
         let slot = slots[index]
         selections[slot] = option
-        let isFrontOnly = frontOnlyDocumentTypes.contains(
-            WorkflowDocumentTypeOption.normalized(option.wireValue))
-        phase = .capturingDocument(
-            slot: slot,
-            type: documentType,
-            captureMode: isFrontOnly ? .frontOnly : .frontAndBack)
+        phase = capturePhase(slot: slot, option: option)
     }
 
     func documentCaptured(front: FileInput, back: FileInput?) {
@@ -223,10 +222,18 @@ final class IDVerificationStepFlowModel: ObservableObject {
 
         guard let index = slots.firstIndex(of: slot) else { return }
         let nextIndex = index + 1
-        phase =
-            slots.indices.contains(nextIndex)
-            ? .selectingType(index: nextIndex)
-            : .capturingSelfie
+        guard slots.indices.contains(nextIndex) else {
+            phase = .capturingSelfie
+            return
+        }
+        // A document retake keeps the later slots' type selections, so those
+        // go straight back to capture.
+        let nextSlot = slots[nextIndex]
+        if let kept = selections[nextSlot] {
+            phase = capturePhase(slot: nextSlot, option: kept)
+        } else {
+            phase = .selectingType(index: nextIndex)
+        }
     }
 
     func captureFailed(_ error: DeepIDVError) {
@@ -250,14 +257,46 @@ final class IDVerificationStepFlowModel: ObservableObject {
         fail(.cancelled("Identity verification was cancelled."))
     }
 
-    /// Clears all captures so a retry always uses fresh uploads.
+    /// Starts the next attempt from the point the failure's suggested action
+    /// calls for, so the applicant only redoes what failed. Anything without a
+    /// targeted remedy clears every capture and starts over.
     func retry() {
-        guard !hasCompleted, case .retry = phase else { return }
+        guard !hasCompleted, case .retry(let failure, _) = phase else { return }
         task?.cancel()
-        selections.removeAll()
-        captures.removeAll()
         selfie = nil
-        phase = .selectingType(index: 0)
+        reusesDocumentUploads = false
+
+        switch failure?.userAction {
+        case .retakeSelfie where !documentUploadKeys.isEmpty:
+            // Only the selfie is captured and uploaded again; the documents
+            // are resubmitted with the keys they already have.
+            reusesDocumentUploads = true
+            phase = .capturingSelfie
+
+        case .useDifferentDocument:
+            let index = slotIndex(for: failure?.slot)
+            for slot in slots[index...] {
+                selections[slot] = nil
+                captures[slot] = nil
+            }
+            documentUploadKeys.removeAll()
+            phase = .selectingType(index: index)
+
+        case .retakeDocument:
+            let index = slotIndex(for: failure?.slot)
+            guard let option = selections[slots[index]] else {
+                restart()
+                return
+            }
+            for slot in slots[index...] {
+                captures[slot] = nil
+            }
+            documentUploadKeys.removeAll()
+            phase = capturePhase(slot: slots[index], option: option)
+
+        default:
+            restart()
+        }
     }
 
     func selectedWireType(for slot: IDVerificationDocumentSlot) -> String? {
@@ -268,21 +307,57 @@ final class IDVerificationStepFlowModel: ObservableObject {
         await task?.value
     }
 
+    /// Clears every capture and returns to the first type selection.
+    private func restart() {
+        selections.removeAll()
+        captures.removeAll()
+        documentUploadKeys.removeAll()
+        phase = .selectingType(index: 0)
+    }
+
+    /// The position of the document a failure is attributed to. A failure
+    /// without a slot, or one naming a document this step does not collect, is
+    /// treated as the primary document.
+    private func slotIndex(for slot: WorkflowDocumentSlot?) -> Int {
+        let target: IDVerificationDocumentSlot
+        switch slot {
+        case .secondary: target = .secondary
+        case .tertiary: target = .tertiary
+        case .primary, nil: target = .primary
+        }
+        return slots.firstIndex(of: target) ?? 0
+    }
+
+    private func capturePhase(
+        slot: IDVerificationDocumentSlot,
+        option: WorkflowDocumentTypeOption
+    ) -> Phase {
+        let isFrontOnly = frontOnlyDocumentTypes.contains(
+            WorkflowDocumentTypeOption.normalized(option.wireValue))
+        return .capturingDocument(
+            slot: slot,
+            type: option.documentType,
+            captureMode: isFrontOnly ? .frontOnly : .frontAndBack)
+    }
+
     private func submitAttempt() {
         guard let selfie, captures.count == slots.count else {
             fail(.validation("Required identity captures are missing."))
             return
         }
 
+        let reusedKeys = reusesDocumentUploads ? documentUploadKeys : [:]
         var files: [SessionUploadSlot: FileInput] = [.selfieFront: selfie]
-        for slot in slots {
-            guard let capture = captures[slot] else {
-                fail(.validation("A required document capture is missing."))
-                return
-            }
-            files[slot.frontUploadSlot] = capture.front
-            if let back = capture.back {
-                files[slot.backUploadSlot] = back
+        if reusedKeys.isEmpty {
+            for slot in slots {
+                guard let capture = captures[slot] else {
+                    fail(.validation("A required document capture is missing."))
+                    return
+                }
+                files[slot.frontUploadSlot] = capture.front
+                if let back = capture.back {
+                    files[slot.backUploadSlot] = back
+                }
             }
         }
 
@@ -290,8 +365,10 @@ final class IDVerificationStepFlowModel: ObservableObject {
         task = Task { [weak self] in
             guard let self else { return }
             do {
-                let keys = try await self.upload(files)
+                let uploaded = try await self.upload(files)
                 guard !Task.isCancelled, !self.hasCompleted else { return }
+                let keys = reusedKeys.merging(uploaded) { _, new in new }
+                self.documentUploadKeys = keys.filter { $0.key != .selfieFront }
                 let submission = try self.makeSubmission(uploadKeys: keys)
                 let outcome = try await self.submit(submission)
                 guard !Task.isCancelled, !self.hasCompleted else { return }
@@ -333,7 +410,7 @@ final class IDVerificationStepFlowModel: ObservableObject {
 
         if outcome.canRetry {
             phase = .retry(
-                failureReason: outcome.failureReason,
+                failure: outcome.failure,
                 attemptsRemaining: outcome.attemptsRemaining)
         } else {
             complete(outcome)

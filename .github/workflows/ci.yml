@@ -43,3 +43,8 @@ jobs:
           xcodebuild test \
             -scheme DeepIDV \
             -destination "id=$DEVICE_ID"
+
+      # Host apps must be told to handle enum cases added in later releases:
+      # a client switch without `@unknown default` has to fail to compile.
+      - name: Check public enums are non-exhaustive
+        run: .github/checks/check-nonexhaustive.sh

@@ -13,20 +13,26 @@ final class WorkflowFlowModel: ObservableObject {
         case resyncing
         case finishing
         case finished
+        /// The entry call failed; no step has run.
         case failed(DeepIDVError)
+        /// A step ended the run with an error. The result is reported when
+        /// the applicant closes the error screen.
+        case stepError(DeepIDVError)
     }
 
     typealias CreateOperation = () async throws -> WorkflowSession
     typealias StartOperation = () async throws -> WorkflowExecutionState
+    typealias ResumeOperation = () async throws -> WorkflowExecutionState
     typealias FetchStateOperation = (_ sessionID: String) async throws -> WorkflowExecutionState
     typealias StepSupportOperation = (_ stepID: WorkflowStepID) -> Bool
 
-    /// How a run enters: a session this SDK creates, or an existing un-started
-    /// session started by id. Only the entry call differs — everything
-    /// downstream is shared.
+    /// How a run enters: a session this SDK creates, an existing un-started
+    /// session started by id, or an existing session resumed from its current
+    /// step. Only the entry call differs — everything downstream is shared.
     private enum Entry {
         case created(WorkflowSession)
         case started(WorkflowExecutionState)
+        case resumed(WorkflowExecutionState)
     }
 
     @Published private(set) var phase: Phase = .creating
@@ -75,6 +81,21 @@ final class WorkflowFlowModel: ObservableObject {
         self.onResult = onResult
     }
 
+    /// Resumes an existing session by id from the step the server says is
+    /// current. The resume call seeds the run — including the steps already
+    /// completed and the attempts left — from the state it returns.
+    init(
+        resume: @escaping ResumeOperation,
+        fetchState: @escaping FetchStateOperation,
+        supportsStep: @escaping StepSupportOperation,
+        onResult: @escaping (Result<WorkflowRunResult, DeepIDVError>) -> Void
+    ) {
+        self.entry = { .resumed(try await resume()) }
+        self.fetchState = fetchState
+        self.supportsStep = supportsStep
+        self.onResult = onResult
+    }
+
     /// Performs the entry call once.
     func start() {
         guard !hasStarted, !hasFinished else { return }
@@ -106,6 +127,54 @@ final class WorkflowFlowModel: ObservableObject {
     func dismissFailure() {
         guard case .failed(let error) = phase else { return }
         finish(.failure(error))
+    }
+
+    /// Whether the mid-run error screen offers a retry: only failures that can
+    /// clear up on their own (connectivity, throttling, a server fault).
+    var canRetryStepError: Bool {
+        guard !hasFinished, case .stepError(let error) = phase, sessionID != nil else {
+            return false
+        }
+        switch error.kind {
+        case .network, .timeout, .rateLimit, .serviceUnavailable:
+            return true
+        case .api:
+            return (error.status ?? 0) >= 500
+        default:
+            return false
+        }
+    }
+
+    /// Closes the mid-run error screen and reports the error that ended the run.
+    func dismissStepError() {
+        guard case .stepError(let error) = phase else { return }
+        finish(.failure(error))
+    }
+
+    /// Re-reads the session after a transient step error and returns to the
+    /// step the server says is current. A failed read comes back to the error
+    /// screen with the new error.
+    func retryAfterStepError() {
+        guard canRetryStepError, let sessionID else { return }
+        task?.cancel()
+        hasResyncedCurrentConflict = false
+        phase = .resyncing
+        task = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let state = try await self.fetchState(sessionID)
+                guard !Task.isCancelled, !self.hasFinished else { return }
+                self.applyAndRender(state)
+            } catch let error as DeepIDVError {
+                guard !Task.isCancelled, !self.hasFinished else { return }
+                self.phase = .stepError(error)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled, !self.hasFinished else { return }
+                self.phase = .stepError(Self.unexpected(error))
+            }
+        }
     }
 
     /// Ends the run locally. No abandonment request is sent.
@@ -143,7 +212,7 @@ final class WorkflowFlowModel: ObservableObject {
             stepID: outcome.stepID,
             status: outcome.stepStatus,
             attempts: priorAttempts + outcome.attempts,
-            failureReason: outcome.failureReason)
+            failure: outcome.failure)
         if outcome.isTerminalRun {
             finalize(using: outcome)
         } else if let next = outcome.currentStep {
@@ -153,14 +222,18 @@ final class WorkflowFlowModel: ObservableObject {
         }
     }
 
-    /// Ends the run when an active step reports an unrecoverable error.
+    /// Handles an unrecoverable error from the active step. A cancellation
+    /// ends the run at once and a stale-step conflict resyncs; anything else
+    /// shows the error screen, and the result is reported when it is closed.
     func stepFailed(_ error: DeepIDVError) {
         guard !hasFinished, case .runningStep = phase else { return }
         cancelActiveStep = nil
-        if error.kind == .conflict, error.conflict?.currentStep != nil {
+        if error.kind == .cancelled {
+            finish(.failure(error))
+        } else if error.kind == .conflict, error.conflict?.currentStep != nil {
             recoverFromConflict(error)
         } else {
-            finish(.failure(error))
+            phase = .stepError(error)
         }
     }
 
@@ -191,7 +264,7 @@ final class WorkflowFlowModel: ObservableObject {
                     } else {
                         self.finalize()
                     }
-                case .started(let state):
+                case .started(let state), .resumed(let state):
                     self.applyAndRender(state)
                 }
             } catch let error as DeepIDVError {
@@ -287,12 +360,12 @@ final class WorkflowFlowModel: ObservableObject {
     }
 
     /// Seeds the run from a server state envelope and renders the step the
-    /// server says is current. Shared by the run-by-sessionID bootstrap and
-    /// conflict resync, so a bootstrapped run is in exactly the state a
-    /// resynced one would be.
+    /// server says is current. Shared by the start and resume bootstraps and
+    /// by resync, so a bootstrapped run is in exactly the state a resynced one
+    /// would be.
     private func applyAndRender(_ state: WorkflowExecutionState) {
         apply(state)
-        if Self.isTerminal(state) {
+        if state.isTerminal {
             finish(.success(WorkflowRunResult(state: state)))
         } else if let currentStep = state.currentStep {
             moveToStep(at: currentStep)
@@ -315,7 +388,7 @@ final class WorkflowFlowModel: ObservableObject {
                 stepID: step.stepID,
                 status: step.status,
                 attempts: step.attempts,
-                failureReason: step.failureReason)
+                failure: step.failure)
         }
     }
 
@@ -329,13 +402,14 @@ final class WorkflowFlowModel: ObservableObject {
                     stepID: step.stepID,
                     status: step.status,
                     attempts: 0,
-                    failureReason: nil)
+                    failure: nil)
         }
         return WorkflowRunResult(
             sessionID: sessionID,
             sessionStatus: outcome.sessionStatus,
             sessionProgress: outcome.sessionProgress,
-            steps: outcomes)
+            steps: outcomes,
+            sessionFailure: outcome.sessionFailure)
     }
 
     private func finish(_ result: Result<WorkflowRunResult, DeepIDVError>) {
@@ -350,14 +424,5 @@ final class WorkflowFlowModel: ObservableObject {
         .network(
             "Workflow verification failed unexpectedly.",
             causeDescription: String(describing: error))
-    }
-
-    private static func isTerminal(_ state: WorkflowExecutionState) -> Bool {
-        state.currentStep == nil
-            || state.sessionProgress == .completed
-            || state.status == .submitted
-            || state.status == .failed
-            || state.status == .completed
-            || state.status == .expired
     }
 }

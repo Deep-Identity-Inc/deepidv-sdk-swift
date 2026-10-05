@@ -33,12 +33,16 @@ struct CustomFaceLivenessFlowView: View {
     @StateObject private var model: CustomFaceLivenessModel
     private let onResult: (Result<FaceLivenessResult, DeepIDVError>) -> Void
     private let authorizer: any CameraAuthorizing
+    /// Replaces the fixed not-passed copy when the host flow knows why the
+    /// attempt failed. `nil` outside a workflow run.
+    private let retryCopy: (title: String, body: String)?
     @State private var permissionDenied = false
     @State private var didBegin = false
 
     init(
         client: DeepIDVClient,
         sessionID: String,
+        retryCopy: (title: String, body: String)? = nil,
         onResult: @escaping (Result<FaceLivenessResult, DeepIDVError>) -> Void
     ) {
         _model = StateObject(
@@ -47,6 +51,7 @@ struct CustomFaceLivenessFlowView: View {
                 sessionID: sessionID,
                 onResult: onResult))
         self.onResult = onResult
+        self.retryCopy = retryCopy
         self.authorizer = SystemCameraAuthorizer()
     }
 
@@ -98,11 +103,20 @@ struct CustomFaceLivenessFlowView: View {
             Image(systemName: result.passed ? "checkmark.circle.fill" : "xmark.circle.fill")
                 .font(.system(size: 64))
                 .foregroundStyle(result.passed ? theme.colors.success : theme.colors.error)
-            Text(result.passed ? "Liveness confirmed" : "We couldn't verify you")
-                .font(theme.typography.heading())
-                .foregroundStyle(theme.colors.grey.s900)
-                .multilineTextAlignment(.center)
+            Text(
+                result.passed
+                    ? "Liveness confirmed" : retryCopy?.title ?? "We couldn't verify you"
+            )
+            .font(theme.typography.heading())
+            .foregroundStyle(theme.colors.grey.s900)
+            .multilineTextAlignment(.center)
             if !result.passed {
+                if let retryCopy {
+                    Text(retryCopy.body)
+                        .font(theme.typography.body())
+                        .foregroundStyle(theme.colors.grey.s700)
+                        .multilineTextAlignment(.center)
+                }
                 primaryButton("Try again", action: model.retry)
             }
         }
@@ -114,7 +128,7 @@ struct CustomFaceLivenessFlowView: View {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 56))
                 .foregroundStyle(theme.colors.warning)
-            Text(error.message)
+            Text(WorkflowFailureCopy.error(error).body)
                 .font(theme.typography.body())
                 .foregroundStyle(theme.colors.grey.s700)
                 .multilineTextAlignment(.center)

@@ -156,7 +156,7 @@ struct WorkflowModelsDecodingTests {
         #expect(state.currentStep == nil)
         #expect(state.attemptsRemaining == nil)
         #expect(state.steps[0].attempts == 1)
-        #expect(state.steps[0].failureReason == nil)
+        #expect(state.steps[0].failure == nil)
         #expect(state.steps[0].startedAt == "2026-08-01T00:00:00Z")
     }
 
@@ -189,7 +189,7 @@ struct WorkflowModelsDecodingTests {
         #expect(state.currentStep == 0)
         #expect(state.steps[0].startedAt == nil)
         #expect(state.steps[0].completedAt == nil)
-        #expect(state.steps[0].failureReason == nil)
+        #expect(state.steps[0].failure == nil)
     }
 
     @Test func unknownStepIDYieldsUnsupportedAndStateStillDecodes() throws {
@@ -266,7 +266,7 @@ struct WorkflowModelsDecodingTests {
         )
         #expect(result.stepID == .idVerification)
         #expect(result.stepStatus == .completed)
-        #expect(result.failureReason == nil)
+        #expect(result.failure == nil)
         #expect(result.currentStep == 1)
         #expect(result.attemptsRemaining == 2)
         #expect(result.sessionStatus == .pending)

@@ -38,6 +38,7 @@ struct CustomFaceLivenessStepFlowView: View {
             CustomFaceLivenessFlowView(
                 client: client,
                 sessionID: sessionID,
+                retryCopy: model.retryCopy,
                 onResult: { model.attemptFinished($0) })
 
             if model.state == .syncing {

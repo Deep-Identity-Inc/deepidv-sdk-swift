@@ -18,6 +18,7 @@ public struct WorkflowStepID: RawRepresentable, Hashable, Sendable, Codable {
 }
 
 /// Closed set of per-step statuses.
+@nonexhaustive
 public enum WorkflowStepStatus: String, Sendable, Codable, Equatable {
     case pending = "PENDING"
     case inProgress = "IN_PROGRESS"
@@ -27,6 +28,7 @@ public enum WorkflowStepStatus: String, Sendable, Codable, Equatable {
 }
 
 /// Closed set of session-progress values.
+@nonexhaustive
 public enum SessionProgress: String, Sendable, Codable, Equatable {
     case pending = "PENDING"
     case started = "STARTED"

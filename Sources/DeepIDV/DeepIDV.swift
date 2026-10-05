@@ -129,6 +129,19 @@ public struct DeepIDVClient: Sendable {
         try await makeWorkflowService().startRun(sessionID: sessionID)
     }
 
+    /// Resumes an existing headless session from its current step
+    /// (`GET /v1/sessions/{session_id}/workflow`), returning the execution state
+    /// the run continues from.
+    ///
+    /// Use this to continue a run that ended before the session finished — the
+    /// applicant cancelled, the app was killed, or a run ended on an error. Works
+    /// for un-started sessions too. A terminal session fails with
+    /// ``DeepIDVError/Kind/conflict`` and ``APIErrorCode/sessionTerminal``; read its
+    /// outcome with ``fetchWorkflowState(sessionID:)`` instead.
+    public func resumeWorkflowSession(sessionID: String) async throws -> WorkflowExecutionState {
+        try await makeWorkflowService().resumeRun(sessionID: sessionID)
+    }
+
     /// Builds a ``WorkflowService`` from this client's `(config, transport)`.
     /// `package` so the workflow view/model and tests share the seam — external
     /// clients use the public create/state wrappers (and the workflow view for

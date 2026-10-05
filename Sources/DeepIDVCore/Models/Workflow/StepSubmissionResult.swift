@@ -11,7 +11,10 @@ public struct StepSubmissionResult<Payload: Decodable & Sendable & Equatable>:
 {
     public let stepID: WorkflowStepID
     public let stepStatus: WorkflowStepStatus
-    public let failureReason: String?
+    /// Why this attempt failed a check; `nil` when it passed.
+    public let failure: WorkflowFailure?
+    /// Why the run ended, when this submission ended it without success.
+    public let sessionFailure: WorkflowSessionFailure?
     /// Post-submission current step index; `nil` when the run is finished.
     public let currentStep: Int?
     /// Session-wide attempts remaining; `nil` = unlimited (WR-15).
@@ -23,7 +26,8 @@ public struct StepSubmissionResult<Payload: Decodable & Sendable & Equatable>:
     enum CodingKeys: String, CodingKey {
         case stepID = "step_id"
         case stepStatus = "step_status"
-        case failureReason = "failure_reason"
+        case failure
+        case sessionFailure = "session_failure"
         case currentStep = "current_step"
         case attemptsRemaining = "attempts_remaining"
         case sessionStatus = "session_status"
@@ -33,7 +37,8 @@ public struct StepSubmissionResult<Payload: Decodable & Sendable & Equatable>:
     public init(
         stepID: WorkflowStepID,
         stepStatus: WorkflowStepStatus,
-        failureReason: String?,
+        failure: WorkflowFailure?,
+        sessionFailure: WorkflowSessionFailure? = nil,
         currentStep: Int?,
         attemptsRemaining: Int?,
         sessionStatus: SessionStatus,
@@ -42,7 +47,8 @@ public struct StepSubmissionResult<Payload: Decodable & Sendable & Equatable>:
     ) {
         self.stepID = stepID
         self.stepStatus = stepStatus
-        self.failureReason = failureReason
+        self.failure = failure
+        self.sessionFailure = sessionFailure
         self.currentStep = currentStep
         self.attemptsRemaining = attemptsRemaining
         self.sessionStatus = sessionStatus
@@ -54,7 +60,9 @@ public struct StepSubmissionResult<Payload: Decodable & Sendable & Equatable>:
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.stepID = try container.decode(WorkflowStepID.self, forKey: .stepID)
         self.stepStatus = try container.decode(WorkflowStepStatus.self, forKey: .stepStatus)
-        self.failureReason = try container.decodeIfPresent(String.self, forKey: .failureReason)
+        self.failure = try container.decodeIfPresent(WorkflowFailure.self, forKey: .failure)
+        self.sessionFailure = try container.decodeIfPresent(
+            WorkflowSessionFailure.self, forKey: .sessionFailure)
         self.currentStep = try container.decodeIfPresent(Int.self, forKey: .currentStep)
         self.attemptsRemaining = try container.decodeIfPresent(Int.self, forKey: .attemptsRemaining)
         self.sessionStatus = try container.decode(SessionStatus.self, forKey: .sessionStatus)

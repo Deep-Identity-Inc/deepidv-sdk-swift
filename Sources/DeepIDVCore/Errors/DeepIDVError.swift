@@ -4,13 +4,15 @@ import Foundation
 
 /// Everything the SDK can throw at the HTTP layer.
 ///
-/// A single value type — not a class hierarchy. `Kind` is the exhaustive
+/// A single value type — not a class hierarchy. `Kind` is the
 /// switch surface callers `catch` and branch on; the struct carries the shared
 /// HTTP context (status, code, raw response). Being a `struct` keeps it
 /// `Sendable` and `Equatable`, so it crosses concurrency boundaries and is
 /// trivial to assert on in tests.
 public struct DeepIDVError: Error, Sendable, Equatable {
-    /// The exhaustive set of error categories callers branch on.
+    /// The error categories callers branch on. More can be added in later
+    /// versions, so switches outside the SDK need `@unknown default`.
+    @nonexhaustive
     public enum Kind: Sendable, Equatable {
         case authentication  // 401
         case authorization  // 403
@@ -39,6 +41,10 @@ public struct DeepIDVError: Error, Sendable, Equatable {
     public let status: Int?
     /// Machine-readable error code (e.g. `"rate_limit_error"`).
     public let code: String?
+    /// The server's machine-readable reason for refusing a request, read from
+    /// the error body's `code`. `nil` for transport, capture and other
+    /// SDK-originated errors, and for servers that send no code.
+    public let apiCode: APIErrorCode?
     /// Raw HTTP response (status, headers, body) captured for debugging.
     public let rawResponse: RawResponse?
     /// Seconds to wait before retrying. Populated only for `.rateLimit`.
@@ -58,6 +64,7 @@ public struct DeepIDVError: Error, Sendable, Equatable {
         message: String,
         status: Int? = nil,
         code: String? = nil,
+        apiCode: APIErrorCode? = nil,
         rawResponse: RawResponse? = nil,
         retryAfter: TimeInterval? = nil,
         conflict: ConflictInfo? = nil,
@@ -67,6 +74,7 @@ public struct DeepIDVError: Error, Sendable, Equatable {
         self.message = message
         self.status = status
         self.code = code
+        self.apiCode = apiCode
         self.rawResponse = rawResponse
         self.retryAfter = retryAfter
         self.conflict = conflict
@@ -118,76 +126,82 @@ extension DeepIDVError {
 
     /// 400 Bad Request.
     public static func validation(
-        _ message: String, rawResponse: RawResponse? = nil, causeDescription: String? = nil
+        _ message: String, apiCode: APIErrorCode? = nil, rawResponse: RawResponse? = nil,
+        causeDescription: String? = nil
     ) -> DeepIDVError {
         DeepIDVError(
             kind: .validation, message: message, status: 400, code: "validation_error",
-            rawResponse: rawResponse, causeDescription: causeDescription)
+            apiCode: apiCode, rawResponse: rawResponse, causeDescription: causeDescription)
     }
 
     /// 401 Unauthorized.
     public static func authentication(
-        _ message: String, rawResponse: RawResponse? = nil
+        _ message: String, apiCode: APIErrorCode? = nil, rawResponse: RawResponse? = nil
     ) -> DeepIDVError {
         DeepIDVError(
             kind: .authentication, message: message, status: 401, code: "authentication_error",
-            rawResponse: rawResponse)
+            apiCode: apiCode, rawResponse: rawResponse)
     }
 
     /// 402 Payment Required — pre-flight funds/subscription gate failed.
     public static func insufficientFunds(
-        _ message: String, rawResponse: RawResponse? = nil
+        _ message: String, apiCode: APIErrorCode? = nil, rawResponse: RawResponse? = nil
     ) -> DeepIDVError {
         DeepIDVError(
             kind: .insufficientFunds, message: message, status: 402,
-            code: "insufficient_funds_error", rawResponse: rawResponse)
+            code: "insufficient_funds_error",
+            apiCode: apiCode, rawResponse: rawResponse)
     }
 
     /// 403 Forbidden.
     public static func authorization(
-        _ message: String, rawResponse: RawResponse? = nil
+        _ message: String, apiCode: APIErrorCode? = nil, rawResponse: RawResponse? = nil
     ) -> DeepIDVError {
         DeepIDVError(
             kind: .authorization, message: message, status: 403, code: "authorization_error",
-            rawResponse: rawResponse)
+            apiCode: apiCode, rawResponse: rawResponse)
     }
 
     /// 404 Not Found.
     public static func notFound(
-        _ message: String, rawResponse: RawResponse? = nil
+        _ message: String, apiCode: APIErrorCode? = nil, rawResponse: RawResponse? = nil
     ) -> DeepIDVError {
         DeepIDVError(
             kind: .notFound, message: message, status: 404, code: "not_found_error",
-            rawResponse: rawResponse)
+            apiCode: apiCode, rawResponse: rawResponse)
     }
 
     /// 429 Too Many Requests. `retryAfter` is parsed from the `Retry-After`
     /// header by the client.
     public static func rateLimit(
-        _ message: String, retryAfter: TimeInterval? = nil, rawResponse: RawResponse? = nil
+        _ message: String, retryAfter: TimeInterval? = nil, apiCode: APIErrorCode? = nil,
+        rawResponse: RawResponse? = nil
     ) -> DeepIDVError {
         DeepIDVError(
             kind: .rateLimit, message: message, status: 429, code: "rate_limit_error",
-            rawResponse: rawResponse, retryAfter: retryAfter)
+            apiCode: apiCode, rawResponse: rawResponse, retryAfter: retryAfter)
     }
 
     /// 503 Service Unavailable.
     public static func serviceUnavailable(
-        _ message: String, rawResponse: RawResponse? = nil
+        _ message: String, apiCode: APIErrorCode? = nil, rawResponse: RawResponse? = nil
     ) -> DeepIDVError {
         DeepIDVError(
             kind: .serviceUnavailable, message: message, status: 503,
-            code: "service_unavailable_error", rawResponse: rawResponse)
+            code: "service_unavailable_error",
+            apiCode: apiCode, rawResponse: rawResponse)
     }
 
     /// Any other 4xx/5xx response. `code` defaults to `"api_error"` but can be
     /// overridden (e.g. the uploader's `"upload_url_expired"` / `"upload_error"`).
     public static func api(
         _ message: String, status: Int?, code: String = "api_error",
+        apiCode: APIErrorCode? = nil,
         rawResponse: RawResponse? = nil
     ) -> DeepIDVError {
         DeepIDVError(
-            kind: .api, message: message, status: status, code: code, rawResponse: rawResponse)
+            kind: .api, message: message, status: status, code: code, apiCode: apiCode,
+            rawResponse: rawResponse)
     }
 
     /// Transport-level failure (DNS, connection refused, socket hang-up).
@@ -252,11 +266,23 @@ extension DeepIDVError {
     /// generically retryable; only the face-liveness complete poll loop
     /// special-cases `FACE_LIVENESS_RESULT_NOT_READY`.
     public static func conflict(
-        _ message: String, info: ConflictInfo?, rawResponse: RawResponse? = nil
+        _ message: String, info: ConflictInfo?, apiCode: APIErrorCode? = nil,
+        rawResponse: RawResponse? = nil
     ) -> DeepIDVError {
         DeepIDVError(
             kind: .conflict, message: message, status: 409, code: "conflict_error",
-            rawResponse: rawResponse, conflict: info)
+            apiCode: apiCode, rawResponse: rawResponse, conflict: info)
+    }
+
+    /// The session has already finished, so there is no step left to run.
+    /// Built by the SDK when a state read shows a terminal session — the same
+    /// shape the step endpoint answers with for a finished session.
+    static func sessionTerminal() -> DeepIDVError {
+        DeepIDVError(
+            kind: .conflict,
+            message: "The session has already finished and cannot be resumed.",
+            code: "conflict_error", apiCode: .sessionTerminal,
+            conflict: ConflictInfo(currentStep: nil, stepID: nil, failureReason: nil))
     }
 }
 
@@ -269,6 +295,7 @@ extension DeepIDVError: CustomStringConvertible {
     public var description: String {
         var parts = ["kind: \(kind)"]
         if let code { parts.append("code: \(code)") }
+        if let apiCode { parts.append("apiCode: \(apiCode.rawValue)") }
         if let status { parts.append("status: \(status)") }
         parts.append("message: \(message)")
         return "DeepIDVError(\(parts.joined(separator: ", ")))"

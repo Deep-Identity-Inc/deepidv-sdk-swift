@@ -98,9 +98,9 @@ struct IDVerificationStepFlowView: View {
         case .submitting:
             progressView
 
-        case .retry(let failureReason, let attemptsRemaining):
+        case .retry(let failure, let attemptsRemaining):
             retryView(
-                failureReason: failureReason,
+                failure: failure,
                 attemptsRemaining: attemptsRemaining)
 
         case .finished:
@@ -125,18 +125,20 @@ struct IDVerificationStepFlowView: View {
     }
 
     private func retryView(
-        failureReason: String?,
+        failure: WorkflowFailure?,
         attemptsRemaining: Int?
     ) -> some View {
-        VStack(spacing: theme.spacing.lg) {
+        let copy = WorkflowFailureCopy.failure(failure, step: .idVerification)
+        return VStack(spacing: theme.spacing.lg) {
             Spacer()
             Image(systemName: "arrow.clockwise.circle.fill")
                 .font(.system(size: 64))
                 .foregroundStyle(theme.colors.warning)
-            Text("Let's try that again")
+            Text(copy.title)
                 .font(theme.typography.heading())
                 .foregroundStyle(theme.colors.grey.s900)
-            Text(failureReason ?? "We couldn't complete the identity check.")
+                .multilineTextAlignment(.center)
+            Text(copy.body)
                 .font(theme.typography.body())
                 .foregroundStyle(theme.colors.grey.s700)
                 .multilineTextAlignment(.center)

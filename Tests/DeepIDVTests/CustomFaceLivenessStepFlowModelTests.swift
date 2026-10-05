@@ -9,7 +9,7 @@ import Testing
 private func livenessStepState(
     status: WorkflowStepStatus,
     attempts: Int,
-    failureReason: String? = nil
+    failure: WorkflowFailure? = nil
 ) -> WorkflowStepState {
     WorkflowStepState(
         stepID: .faceLiveness,
@@ -17,11 +17,20 @@ private func livenessStepState(
         attempts: attempts,
         startedAt: nil,
         completedAt: nil,
-        failureReason: failureReason,
+        failure: failure,
         requirements: .faceLiveness(
             FaceLivenessRequirements(
                 challengeType: "FaceMovementChallenge",
                 confidenceThreshold: 70)))
+}
+
+private func livenessFailure(_ code: WorkflowFailure.Code) -> WorkflowFailure {
+    WorkflowFailure(
+        code: code,
+        category: .liveness,
+        userAction: .retryLiveness,
+        isRetryable: true,
+        message: "server text")
 }
 
 private func executionState(
@@ -106,7 +115,7 @@ struct CustomFaceLivenessStepFlowModelTests {
     @Test func notLiveWithBudgetLeftHandsScreenBackForRetry() async {
         let state = executionState(
             liveness: livenessStepState(
-                status: .pending, attempts: 1, failureReason: "FACE_LIVENESS_CHECK_FAILED"),
+                status: .pending, attempts: 1, failure: livenessFailure(.livenessFailed)),
             currentStep: 1,
             attemptsRemaining: 1)
         let spy = StepSpy(states: [.success(state)])
@@ -124,7 +133,7 @@ struct CustomFaceLivenessStepFlowModelTests {
     @Test func notLiveAfterLastAttemptCompletesFailedStep() async {
         let state = executionState(
             liveness: livenessStepState(
-                status: .failed, attempts: 2, failureReason: "FACE_LIVENESS_CHECK_FAILED"),
+                status: .failed, attempts: 2, failure: livenessFailure(.livenessFailed)),
             currentStep: nil,
             attemptsRemaining: 0,
             status: .failed,
@@ -138,7 +147,7 @@ struct CustomFaceLivenessStepFlowModelTests {
         #expect(model.state == .finished)
         #expect(spy.completed.count == 1)
         #expect(spy.completed[0].stepStatus == .failed)
-        #expect(spy.completed[0].failureReason == "FACE_LIVENESS_CHECK_FAILED")
+        #expect(spy.completed[0].failure == livenessFailure(.livenessFailed))
         #expect(spy.completed[0].attempts == 2)
     }
 
@@ -235,6 +244,78 @@ struct CustomFaceLivenessStepFlowModelTests {
         await model.awaitPendingWork()
 
         #expect(spy.failures.map(\.kind) == [.validation])
+    }
+
+    // MARK: - Retry copy
+
+    @Test func livenessIDMismatchPublishesTheMismatchCopyAndKeepsRunning() async {
+        let state = executionState(
+            liveness: livenessStepState(
+                status: .inProgress, attempts: 1, failure: livenessFailure(.livenessIDMismatch)),
+            currentStep: 1,
+            attemptsRemaining: 1)
+        let spy = StepSpy(states: [.success(state)])
+        let model = makeModel(attemptsRemaining: 2, spy: spy)
+        #expect(model.retryCopy == nil)
+
+        model.attemptFinished(.success(notLive))
+        await model.awaitPendingWork()
+
+        #expect(model.state == .running)
+        #expect(model.retryCopy?.title == "Your face check doesn't match your ID")
+        #expect(
+            model.retryCopy?.body
+                == "Please make sure you, the person on the ID, complete the face check.")
+        #expect(spy.completed.isEmpty)
+        #expect(spy.failures.isEmpty)
+    }
+
+    @Test func livenessFailedPublishesTheGenericLivenessCopy() async {
+        let state = executionState(
+            liveness: livenessStepState(
+                status: .inProgress, attempts: 1, failure: livenessFailure(.livenessFailed)),
+            currentStep: 1,
+            attemptsRemaining: nil)
+        let spy = StepSpy(states: [.success(state)])
+        let model = makeModel(spy: spy)
+
+        model.attemptFinished(.success(notLive))
+        await model.awaitPendingWork()
+
+        #expect(model.state == .running)
+        #expect(model.retryCopy?.title == "We couldn't verify you")
+        #expect(
+            model.retryCopy?.body == "Follow the on-screen prompts in good light, then try again.")
+    }
+
+    // MARK: - Upload incomplete
+
+    @Test func uploadIncompleteConflictStaysOnCustomViewWhileBudgetRemains() async {
+        let spy = StepSpy(states: [])
+        let model = makeModel(attemptsRemaining: 1, spy: spy)
+
+        model.attemptFinished(
+            .failure(
+                .conflict(
+                    "Frames missing",
+                    info: ConflictInfo(currentStep: 1, stepID: "FACE_LIVENESS", failureReason: nil),
+                    apiCode: .livenessUploadIncomplete)))
+
+        #expect(model.state == .running)
+        #expect(spy.fetchCalls == 0)
+        #expect(spy.failures.isEmpty)
+        #expect(spy.completed.isEmpty)
+    }
+
+    @Test func otherConflictsStillFailTheStep() async {
+        let spy = StepSpy(states: [])
+        let model = makeModel(attemptsRemaining: 1, spy: spy)
+
+        model.attemptFinished(
+            .failure(.conflict("Wrong step", info: nil, apiCode: .stepOutOfOrder)))
+
+        #expect(model.state == .finished)
+        #expect(spy.failures.map(\.kind) == [.conflict])
     }
 
     @Test func cancelAfterCompletionIsIgnored() async {

@@ -206,30 +206,47 @@ struct APIClient: Sendable {
     /// the message from the body and, for 429, the `Retry-After` delay.
     private func mapError(status: Int, raw: RawResponse) -> DeepIDVError {
         let message = extractErrorMessage(data: raw.body, status: status)
+        let apiCode = extractAPICode(from: raw.body)
         switch status {
         case 400:
-            return .validation(message, rawResponse: raw)
+            return .validation(message, apiCode: apiCode, rawResponse: raw)
         case 401:
             // The value-type error carries no dedicated `redactedKey` field, so
             // the redacted reference is surfaced in the message. The full key is
             // never stored or serialized.
             return .authentication(
-                "\(message) (api key: \(redactApiKey(config.apiKey)))", rawResponse: raw)
+                "\(message) (api key: \(redactApiKey(config.apiKey)))", apiCode: apiCode,
+                rawResponse: raw)
         case 402:
-            return .insufficientFunds(message, rawResponse: raw)
+            return .insufficientFunds(message, apiCode: apiCode, rawResponse: raw)
         case 403:
-            return .authorization(message, rawResponse: raw)
+            return .authorization(message, apiCode: apiCode, rawResponse: raw)
         case 404:
-            return .notFound(message, rawResponse: raw)
+            return .notFound(message, apiCode: apiCode, rawResponse: raw)
         case 409:
-            return .conflict(message, info: parseConflictInfo(from: raw.body), rawResponse: raw)
+            return .conflict(
+                message, info: parseConflictInfo(from: raw.body), apiCode: apiCode,
+                rawResponse: raw)
         case 429:
-            return .rateLimit(message, retryAfter: extractRetryAfter(from: raw), rawResponse: raw)
+            return .rateLimit(
+                message, retryAfter: extractRetryAfter(from: raw), apiCode: apiCode,
+                rawResponse: raw)
         case 503:
-            return .serviceUnavailable(message, rawResponse: raw)
+            return .serviceUnavailable(message, apiCode: apiCode, rawResponse: raw)
         default:
-            return .api(message, status: status, rawResponse: raw)
+            return .api(message, status: status, apiCode: apiCode, rawResponse: raw)
         }
+    }
+
+    /// Reads the server's machine-readable error `code` from a JSON object
+    /// body. Anything else — no body, plain text, a non-string `code` — is `nil`.
+    private func extractAPICode(from data: Data?) -> APIErrorCode? {
+        guard let data, !data.isEmpty,
+            let object = try? JSONSerialization.jsonObject(with: data),
+            let dict = object as? [String: Any],
+            let code = dict["code"] as? String
+        else { return nil }
+        return APIErrorCode(rawValue: code)
     }
 
     /// Leniently parses a 409 JSON body into ``ConflictInfo``. Missing or
