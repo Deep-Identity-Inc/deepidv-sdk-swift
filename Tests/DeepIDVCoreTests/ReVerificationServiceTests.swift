@@ -111,12 +111,12 @@ private let verifiedOutcomeBody = Data(
 
 struct ReVerificationServiceTests {
     @Test(arguments: [ChallengeType.faceMovement, .faceMovementAndLight])
-    func createSendsWorkflowIDOnlyAndDecodesSession(challengeType: ChallengeType) async throws {
+    func createSendsWorkflowIDAndEmailAndDecodesSession(challengeType: ChallengeType) async throws {
         let (service, stub) = makeService { _ in
             (createBody(challengeType: challengeType), makeResponse(status: 201))
         }
 
-        let session = try await service.create(workflowID: "wf-1")
+        let session = try await service.create(workflowID: "wf-1", email: "bob@x.com")
 
         #expect(session.reVerificationID == reVerificationID)
         #expect(session.workflowID == "wf-1")
@@ -130,8 +130,9 @@ struct ReVerificationServiceTests {
         #expect(requests[0].url?.path == "/v1/re-verifications")
         #expect(requests[0].timeoutInterval == 30)  // config.timeout, no floor
         let body = try jsonBody(requests[0])
-        #expect(Set(body.keys) == ["workflow_id"])  // no device_fingerprint
+        #expect(Set(body.keys) == ["workflow_id", "email"])  // no device_fingerprint
         #expect(body["workflow_id"] as? String == "wf-1")
+        #expect(body["email"] as? String == "bob@x.com")
     }
 
     /// `create` keeps the default retry policy: a 503 is retried and the
@@ -145,7 +146,7 @@ struct ReVerificationServiceTests {
                 : (createBody(challengeType: .faceMovement), makeResponse(status: 201))
         }
 
-        let session = try await service.create(workflowID: "wf-1")
+        let session = try await service.create(workflowID: "wf-1", email: "bob@x.com")
 
         #expect(session.reVerificationID == reVerificationID)
         let count = await stub.recorder.requests.count
@@ -356,7 +357,7 @@ enum ReVerifyRoute: String, Sendable {
 
 private func call(_ route: ReVerifyRoute, on service: ReVerificationService) async throws {
     switch route {
-    case .create: _ = try await service.create(workflowID: "wf-1")
+    case .create: _ = try await service.create(workflowID: "wf-1", email: "bob@x.com")
     case .start: _ = try await service.startLiveness(id: reVerificationID)
     case .uploadURL: _ = try await service.requestUploadURLs(id: reVerificationID, frameCount: 3)
     case .complete: _ = try await service.completeLiveness(id: reVerificationID)
@@ -395,6 +396,13 @@ private let remapCases: [RemapCase] = [
     RemapCase(
         code: "reverify_disabled", status: 422, route: .create, kind: .api,
         message: "Re-verification isn't enabled for this workflow."),
+    // user_not_found, not_previously_verified — create
+    RemapCase(
+        code: "user_not_found", status: 422, route: .create, kind: .api,
+        message: "No user with this email exists in this organization."),
+    RemapCase(
+        code: "not_previously_verified", status: 422, route: .create, kind: .api,
+        message: "This user hasn't been verified under this workflow yet."),
     // liveness_not_started — upload-url, complete
     RemapCase(
         code: "liveness_not_started", status: 409, route: .uploadURL, kind: .conflict,
