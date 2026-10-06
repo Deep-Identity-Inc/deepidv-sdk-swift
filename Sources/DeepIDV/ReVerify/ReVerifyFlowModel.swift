@@ -37,7 +37,8 @@ enum ReVerifyGuidance: Equatable {
 /// Branches only on `DeepIDVError.code` / `kind`, never on `message`.
 @MainActor
 final class ReVerifyFlowModel: ObservableObject {
-    typealias CreateOperation = (_ workflowID: String) async throws -> ReVerificationSession
+    typealias CreateOperation = (_ workflowID: String, _ email: String) async throws ->
+        ReVerificationSession
     typealias StartLivenessOperation = (_ reVerificationID: String) async throws ->
         CustomLivenessSession
     typealias RequestUploadURLsOperation = (
@@ -69,6 +70,8 @@ final class ReVerifyFlowModel: ObservableObject {
     @Published private(set) var phase: ReVerifyPhase = .checking
 
     private let workflowID: String
+    /// Trimmed once here; `create` sends it as is.
+    private let email: String
     private let create: CreateOperation
     private let startLiveness: StartLivenessOperation
     private let requestUploadURLs: RequestUploadURLsOperation
@@ -95,6 +98,7 @@ final class ReVerifyFlowModel: ObservableObject {
 
     init(
         workflowID: String,
+        email: String,
         create: @escaping CreateOperation,
         startLiveness: @escaping StartLivenessOperation,
         requestUploadURLs: @escaping RequestUploadURLsOperation,
@@ -104,6 +108,7 @@ final class ReVerifyFlowModel: ObservableObject {
         onResult: @escaping (Result<ReVerifyResult, DeepIDVError>) -> Void
     ) {
         self.workflowID = workflowID
+        self.email = email.trimmingCharacters(in: .whitespacesAndNewlines)
         self.create = create
         self.startLiveness = startLiveness
         self.requestUploadURLs = requestUploadURLs
@@ -117,12 +122,14 @@ final class ReVerifyFlowModel: ObservableObject {
     convenience init(
         client: DeepIDVClient,
         workflowID: String,
+        email: String,
         onResult: @escaping (Result<ReVerifyResult, DeepIDVError>) -> Void
     ) {
         let service = client.makeReVerificationService()
         self.init(
             workflowID: workflowID,
-            create: { try await service.create(workflowID: $0) },
+            email: email,
+            create: { try await service.create(workflowID: $0, email: $1) },
             startLiveness: { try await service.startLiveness(id: $0) },
             requestUploadURLs: {
                 try await service.requestUploadURLs(id: $0, frameCount: $1, clipMimeType: $2)
@@ -135,10 +142,16 @@ final class ReVerifyFlowModel: ObservableObject {
 
     // MARK: - Intent (driven by the view)
 
-    /// Creates the re-verification and starts the first attempt, once.
+    /// Creates the re-verification and starts the first attempt, once. A
+    /// blank email is a host programming error: it ends the run with
+    /// `.validation` and no screen, before any request.
     func start() {
         guard !hasStarted, !hasFinished else { return }
         hasStarted = true
+        guard !email.isEmpty else {
+            finish(.failure(.validation("Re-verification needs the applicant's email.")))
+            return
+        }
         launch { try await $0.runFromCreate() }
     }
 
@@ -214,7 +227,7 @@ final class ReVerifyFlowModel: ObservableObject {
     private func runFromCreate() async throws {
         phase = .checking
         inFlight = .create
-        let session = try await create(workflowID)
+        let session = try await create(workflowID, email)
         try checkActive()
         reVerificationID = session.reVerificationID
         try await runStartLiveness()
@@ -374,13 +387,16 @@ final class ReVerifyFlowModel: ObservableObject {
     }
 
     /// Matched on `kind` for 404 / 402 / 403, so a 404 without the
-    /// re-verification body is still `.notFound`; `reverify_disabled` arrives
-    /// as a 422 `.api` and can only be matched on `code`.
+    /// re-verification body is still `.notFound`; `reverify_disabled`,
+    /// `user_not_found` and `not_previously_verified` arrive as a 422 `.api`
+    /// and can only be matched on `code`.
     private static func notEligibleReason(
         for error: DeepIDVError
     ) -> ReVerifyResult.NotEligibleReason? {
         if error.kind == .notFound { return .notFound }
         if error.code == "reverify_disabled" { return .disabled }
+        if error.code == "user_not_found" { return .userNotFound }
+        if error.code == "not_previously_verified" { return .notPreviouslyVerified }
         if error.kind == .insufficientFunds { return .insufficientBalance }
         if error.kind == .authorization { return .notAuthorized }
         return nil

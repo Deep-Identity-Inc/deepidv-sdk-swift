@@ -1,7 +1,6 @@
 // DeepIDV — the umbrella module clients `import`.
 
 import CoreVideo
-import SwiftUI
 // `@_exported import` re-exposes DeepIDVCore's PUBLIC types (DocumentType,
 // FileInput, DocumentScanResult, IdentityVerifyResult, DeepIDVError, …) through
 // DeepIDV. Without this, a client doing `import DeepIDV` could call
@@ -12,6 +11,7 @@ import SwiftUI
 // here. Note this only re-exports `public` symbols — the `package` networking
 // stack stays hidden.
 @_exported import DeepIDVCore
+import SwiftUI
 
 /// The single public entry point to the SDK.
 ///
@@ -225,9 +225,9 @@ public struct DeepIDVClient: Sendable {
 
     // MARK: - Re-verification
 
-    /// Builds the view that re-verifies a returning applicant by face: one
-    /// native liveness capture, searched against the already verified
-    /// applicants of the same organization
+    /// Builds the view that re-verifies a returning applicant: one
+    /// native liveness capture, matched against that user's verified sessions
+    /// under the workflow.
     ///
     /// Presenting the view starts the flow. It delivers exactly one result:
     /// business outcomes arrive as `.success` (``ReVerifyResult``); errors,
@@ -236,12 +236,23 @@ public struct DeepIDVClient: Sendable {
     /// nothing once `onResult` fires — dismiss it and show your own result
     /// screen. It has no cancel control of its own. UIKit hosts can present it
     /// with `UIHostingController`.
+    ///
+    /// - Parameters:
+    ///   - workflowID: The workflow the applicant was verified under.
+    ///     Re-verification must be enabled on it.
+    ///   - email: The applicant's email address in your organization. You
+    ///     supply it; the view never asks the applicant for it. Matched
+    ///     case-insensitively, and leading or trailing whitespace is ignored. A
+    ///     blank email ends the flow immediately with `.failure`
+    ///     (``DeepIDVError/Kind/validation``).
+    ///   - onResult: Called exactly once, with the outcome or the error.
     @MainActor
     public func makeReVerifyView(
         workflowID: String,
+        email: String,
         onResult: @escaping (Result<ReVerifyResult, DeepIDVError>) -> Void
     ) -> some View {
-        ReVerifyFlowView(client: self, workflowID: workflowID, onResult: onResult)
+        ReVerifyFlowView(client: self, workflowID: workflowID, email: email, onResult: onResult)
     }
 
     /// Runs custom face-MOVEMENT liveness headlessly: you capture an ordered

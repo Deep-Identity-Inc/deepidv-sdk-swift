@@ -42,14 +42,16 @@ package struct ReVerificationService: Sendable {
         "/v1/re-verifications/\(id)/liveness/\(action)"
     }
 
-    /// Opens a re-verification against a workflow.
+    /// Opens a re-verification for the user with `email` against a workflow.
     ///
-    /// `POST /v1/re-verifications` `{ workflow_id }` → 201. Default retry
+    /// `POST /v1/re-verifications` `{ workflow_id, email }` → 201. Sends `email`
+    /// as given: the caller trims it, the server lowercases it. Default retry
     /// policy: a repeat only leaves an orphan `PENDING` row that expires.
-    package func create(workflowID: String) async throws -> ReVerificationSession {
+    package func create(workflowID: String, email: String) async throws -> ReVerificationSession {
         try await remapping {
             try await client.post(
-                "/v1/re-verifications", body: CreateReVerificationRequest(workflowID: workflowID))
+                "/v1/re-verifications",
+                body: CreateReVerificationRequest(workflowID: workflowID, email: email))
         }
     }
 
@@ -152,6 +154,8 @@ private enum ReVerifyErrorCode: String {
     case expired
     case alreadyCompleted = "already_completed"
     case insufficientBalance = "insufficient_balance"
+    case userNotFound = "user_not_found"
+    case notPreviouslyVerified = "not_previously_verified"
 
     var message: String {
         switch self {
@@ -162,6 +166,8 @@ private enum ReVerifyErrorCode: String {
         case .expired: "This re-verification has expired. Please start again."
         case .alreadyCompleted: "This re-verification has already finished."
         case .insufficientBalance: "Re-verification is temporarily unavailable."
+        case .userNotFound: "No user with this email exists in this organization."
+        case .notPreviouslyVerified: "This user hasn't been verified under this workflow yet."
         }
     }
 }
@@ -171,12 +177,14 @@ private enum ReVerifyErrorCode: String {
 /// `start` and `complete` take no parameters beyond the path.
 private struct EmptyBody: Encodable {}
 
-/// `workflow_id` only — v1 never sends `device_fingerprint`.
+/// `workflow_id` and `email` — v1 never sends `device_fingerprint`.
 private struct CreateReVerificationRequest: Encodable {
     let workflowID: String
+    let email: String
 
     enum CodingKeys: String, CodingKey {
         case workflowID = "workflow_id"
+        case email
     }
 }
 
