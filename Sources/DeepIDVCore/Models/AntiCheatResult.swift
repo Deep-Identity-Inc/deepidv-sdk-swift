@@ -17,6 +17,7 @@
 public struct AntiCheatResult: Sendable, Equatable, Decodable {
     /// The dedup/self-exclusion verdict. Wire raw values are uppercase
     /// (`DUPLICATE` / `UNIQUE` / `UNAVAILABLE` / `SELF_EXCLUSION`).
+    @nonexhaustive
     public enum Verdict: Sendable, Equatable {
         /// The face matches one already enrolled on another session.
         case duplicate
@@ -43,6 +44,7 @@ public struct AntiCheatResult: Sendable, Equatable, Decodable {
     /// The action the org's workflow policy chose for the verdict. Wire raw
     /// values are lowercase (`allow` / `flag` / `manual-review` / `block`).
     /// `block` means the server has already marked the session FAILED.
+    @nonexhaustive
     public enum Action: Sendable, Equatable {
         case allow
         case flag

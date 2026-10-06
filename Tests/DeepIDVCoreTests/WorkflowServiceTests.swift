@@ -241,3 +241,119 @@ private func makeService(
     #expect(result.currentStep == 1)
     #expect(result.payload == EmptyStepPayload())
 }
+
+// MARK: - resumeRun
+
+/// A state body with the given session fields and one ID-verification step.
+private func resumeStateBody(
+    status: String = "PENDING",
+    progress: String = "STARTED",
+    currentStep: String = "0",
+    stepStatus: String = "IN_PROGRESS",
+    attempts: Int = 1
+) -> Data {
+    Data(
+        """
+        {
+          "session_id": "sess-1",
+          "status": "\(status)",
+          "session_progress": "\(progress)",
+          "current_step": \(currentStep),
+          "attempts_remaining": 2,
+          "steps": [
+            {
+              "step_id": "ID_VERIFICATION",
+              "status": "\(stepStatus)",
+              "attempts": \(attempts),
+              "failure": null,
+              "requirements": {
+                "document": {
+                  "require_front_only": false,
+                  "front_only_document_types": ["passport"],
+                  "require_secondary_id": false,
+                  "require_tertiary_id": false,
+                  "valid_id_types": ["drivers-license"],
+                  "valid_states": []
+                },
+                "face": { "face_front_photo_only": true }
+              }
+            }
+          ]
+        }
+        """.utf8)
+}
+
+@Test(arguments: [
+    // Un-started, then started with one attempt already made.
+    ("PENDING", "PENDING", "PENDING", 0),
+    ("PENDING", "STARTED", "IN_PROGRESS", 1),
+])
+func resumeRunReturnsStateForANonTerminalSessionWithOnlyAGet(
+    status: String, progress: String, stepStatus: String, attempts: Int
+) async throws {
+    let body = resumeStateBody(
+        status: status, progress: progress, stepStatus: stepStatus, attempts: attempts)
+    let (service, stub) = makeService { request in
+        (body, makeResponse(url: request.url!.absoluteString, status: 200))
+    }
+
+    let state = try await service.resumeRun(sessionID: "sess-1")
+
+    let requests = await stub.recorder.requests
+    #expect(requests.count == 1)
+    #expect(requests.first?.httpMethod == "GET")
+    #expect(requests.first?.url?.path == "/v1/sessions/sess-1/workflow")
+    #expect(state.currentStep == 0)
+    #expect(state.attemptsRemaining == 2)
+    #expect(state.steps.first?.attempts == attempts)
+}
+
+@Test(arguments: [
+    // status, progress, current_step
+    ("PENDING", "STARTED", "null"),
+    ("PENDING", "COMPLETED", "0"),
+    ("SUBMITTED", "STARTED", "0"),
+    ("COMPLETED", "STARTED", "0"),
+    ("FAILED", "STARTED", "0"),
+    ("EXPIRED", "STARTED", "0"),
+])
+func resumeRunOnATerminalSessionThrowsSessionTerminal(
+    status: String, progress: String, currentStep: String
+) async {
+    let body = resumeStateBody(status: status, progress: progress, currentStep: currentStep)
+    let (service, stub) = makeService { request in
+        (body, makeResponse(url: request.url!.absoluteString, status: 200))
+    }
+
+    do {
+        _ = try await service.resumeRun(sessionID: "sess-1")
+        Issue.record("expected a conflict error")
+    } catch let error as DeepIDVError {
+        #expect(error.kind == .conflict)
+        #expect(error.apiCode == .sessionTerminal)
+        #expect(error.conflict == ConflictInfo(currentStep: nil, stepID: nil, failureReason: nil))
+        #expect(error.status == nil)
+        #expect(error.rawResponse == nil)
+    } catch {
+        Issue.record("unexpected error type: \(error)")
+    }
+    #expect(await stub.recorder.requests.count == 1)
+}
+
+@Test func resumeRunPropagatesNotFound() async {
+    let body = Data(
+        #"{"error":"Workflow execution state not found","code":"EXECUTION_STATE_NOT_FOUND"}"#.utf8)
+    let (service, _) = makeService { request in
+        (body, makeResponse(url: request.url!.absoluteString, status: 404))
+    }
+
+    do {
+        _ = try await service.resumeRun(sessionID: "sess-1")
+        Issue.record("expected a not-found error")
+    } catch let error as DeepIDVError {
+        #expect(error.kind == .notFound)
+        #expect(error.apiCode == .executionStateNotFound)
+    } catch {
+        Issue.record("unexpected error type: \(error)")
+    }
+}

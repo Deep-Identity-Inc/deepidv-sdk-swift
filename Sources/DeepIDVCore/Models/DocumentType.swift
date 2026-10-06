@@ -9,6 +9,7 @@
 /// on-the-wire value is deliberately *separate* (`wireValue`) since the API uses
 /// snake_case strings (`national_id`, `drivers_license`) that differ from these
 /// idiomatic Swift names. `CaseIterable` lets the picker enumerate the choices.
+@nonexhaustive
 public enum DocumentType: String, Sendable, Equatable, CaseIterable {
     case passport
     case idCard  // wire: "national_id"
@@ -42,6 +43,7 @@ public enum DocumentType: String, Sendable, Equatable, CaseIterable {
 }
 
 /// How many sides the guided flow captures for a given `DocumentType`.
+@nonexhaustive
 public enum CaptureMode: Sendable, Equatable {
     case frontOnly
     case frontAndBack

@@ -9,18 +9,20 @@ public struct WorkflowRunResult: Sendable, Equatable {
         public let stepID: WorkflowStepID
         public let status: WorkflowStepStatus
         public let attempts: Int
-        public let failureReason: String?
+        /// Why the step's most recent attempt failed a check; `nil` when it
+        /// has not failed.
+        public let failure: WorkflowFailure?
 
         public init(
             stepID: WorkflowStepID,
             status: WorkflowStepStatus,
             attempts: Int,
-            failureReason: String?
+            failure: WorkflowFailure?
         ) {
             self.stepID = stepID
             self.status = status
             self.attempts = attempts
-            self.failureReason = failureReason
+            self.failure = failure
         }
     }
 
@@ -28,17 +30,21 @@ public struct WorkflowRunResult: Sendable, Equatable {
     public let sessionStatus: SessionStatus
     public let sessionProgress: SessionProgress
     public let steps: [StepOutcome]
+    /// Why the run ended without reaching submission; `nil` otherwise.
+    public let sessionFailure: WorkflowSessionFailure?
 
     public init(
         sessionID: String,
         sessionStatus: SessionStatus,
         sessionProgress: SessionProgress,
-        steps: [StepOutcome]
+        steps: [StepOutcome],
+        sessionFailure: WorkflowSessionFailure? = nil
     ) {
         self.sessionID = sessionID
         self.sessionStatus = sessionStatus
         self.sessionProgress = sessionProgress
         self.steps = steps
+        self.sessionFailure = sessionFailure
     }
 
     /// Builds the public result from a final execution-state read.
@@ -52,7 +58,8 @@ public struct WorkflowRunResult: Sendable, Equatable {
                     stepID: $0.stepID,
                     status: $0.status,
                     attempts: $0.attempts,
-                    failureReason: $0.failureReason)
-            })
+                    failure: $0.failure)
+            },
+            sessionFailure: state.sessionFailure)
     }
 }

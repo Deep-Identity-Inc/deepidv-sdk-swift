@@ -9,6 +9,7 @@ import Foundation
 /// Errors and user cancellation are the `.failure` side of that `Result`
 /// (a ``DeepIDVError``), never a case here. The view renders nothing once
 /// `onResult` fires: the host shows its own screen for every outcome.
+@nonexhaustive
 public enum ReVerifyResult: Sendable, Equatable {
     /// The applicant's face matched exactly one identity with an approved
     /// session in your organization, under this workflow.
@@ -25,6 +26,7 @@ public enum ReVerifyResult: Sendable, Equatable {
     case failed(reason: FailureReason)
 
     /// Why a run ended in ``ReVerifyResult/failed(reason:)``.
+    @nonexhaustive
     public enum FailureReason: Sendable, Equatable {
         /// The applicant's face was recognised, but it can't be re-verified
         /// for this workflow in your organization. Retrying can't change who
@@ -55,6 +57,7 @@ public enum ReVerifyResult: Sendable, Equatable {
 
     /// Why re-verification can't run at all. Switch on it to choose your own
     /// copy — the SDK never shows server strings.
+    @nonexhaustive
     public enum NotEligibleReason: Sendable, Equatable {
         /// The workflow doesn't exist for this API key's organization, or
         /// re-verification isn't available to the organization. The server

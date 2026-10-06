@@ -7,6 +7,7 @@ import Foundation
 /// `.unsupported` instead of throwing, so a future server-side step type can
 /// never brick `fetchState` on an old SDK. Adding a case is a minor-version
 /// change — hosts must `switch` with a `default`.
+@nonexhaustive
 public enum StepRequirements: Sendable, Equatable {
     case idVerification(IDVerificationRequirements)
     case faceLiveness(FaceLivenessRequirements)

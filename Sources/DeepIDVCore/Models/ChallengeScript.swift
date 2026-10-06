@@ -4,6 +4,7 @@ import Foundation
 
 /// The liveness challenge type the backend `script` asks the client to perform.
 /// Raw values are the wire strings from `POST …/custom/sessions`.
+@nonexhaustive
 public enum ChallengeType: String, Sendable, Equatable, Decodable {
     case faceMovement = "FaceMovementChallenge"
     case faceMovementAndLight = "FaceMovementAndLightChallenge"

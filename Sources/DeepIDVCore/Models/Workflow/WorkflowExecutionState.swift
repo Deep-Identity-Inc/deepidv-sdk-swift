@@ -13,6 +13,8 @@ public struct WorkflowExecutionState: Sendable, Equatable, Decodable {
     public let currentStep: Int?
     /// Session-wide attempt budget remaining; `nil` = unlimited.
     public let attemptsRemaining: Int?
+    /// Why the run ended without reaching submission; `nil` otherwise.
+    public let sessionFailure: WorkflowSessionFailure?
 
     enum CodingKeys: String, CodingKey {
         case sessionID = "session_id"
@@ -21,6 +23,7 @@ public struct WorkflowExecutionState: Sendable, Equatable, Decodable {
         case steps
         case currentStep = "current_step"
         case attemptsRemaining = "attempts_remaining"
+        case sessionFailure = "session_failure"
     }
 
     public init(
@@ -29,7 +32,8 @@ public struct WorkflowExecutionState: Sendable, Equatable, Decodable {
         sessionProgress: SessionProgress,
         steps: [WorkflowStepState],
         currentStep: Int?,
-        attemptsRemaining: Int?
+        attemptsRemaining: Int?,
+        sessionFailure: WorkflowSessionFailure? = nil
     ) {
         self.sessionID = sessionID
         self.status = status
@@ -37,6 +41,18 @@ public struct WorkflowExecutionState: Sendable, Equatable, Decodable {
         self.steps = steps
         self.currentStep = currentStep
         self.attemptsRemaining = attemptsRemaining
+        self.sessionFailure = sessionFailure
+    }
+
+    /// Whether the session has no step left to run: it is finished, failed or
+    /// expired.
+    package var isTerminal: Bool {
+        currentStep == nil
+            || sessionProgress == .completed
+            || status == .submitted
+            || status == .failed
+            || status == .completed
+            || status == .expired
     }
 }
 
@@ -48,7 +64,9 @@ public struct WorkflowStepState: Sendable, Equatable, Decodable {
     public let attempts: Int
     public let startedAt: String?
     public let completedAt: String?
-    public let failureReason: String?
+    /// Why the step's most recent attempt failed a check; `nil` when it has
+    /// not failed.
+    public let failure: WorkflowFailure?
     public let requirements: StepRequirements
 
     enum CodingKeys: String, CodingKey {
@@ -57,7 +75,7 @@ public struct WorkflowStepState: Sendable, Equatable, Decodable {
         case attempts
         case startedAt = "started_at"
         case completedAt = "completed_at"
-        case failureReason = "failure_reason"
+        case failure
         case requirements
     }
 
@@ -67,7 +85,7 @@ public struct WorkflowStepState: Sendable, Equatable, Decodable {
         attempts: Int,
         startedAt: String?,
         completedAt: String?,
-        failureReason: String?,
+        failure: WorkflowFailure?,
         requirements: StepRequirements
     ) {
         self.stepID = stepID
@@ -75,7 +93,7 @@ public struct WorkflowStepState: Sendable, Equatable, Decodable {
         self.attempts = attempts
         self.startedAt = startedAt
         self.completedAt = completedAt
-        self.failureReason = failureReason
+        self.failure = failure
         self.requirements = requirements
     }
 
@@ -87,7 +105,7 @@ public struct WorkflowStepState: Sendable, Equatable, Decodable {
         self.attempts = try container.decode(Int.self, forKey: .attempts)
         self.startedAt = try container.decodeIfPresent(String.self, forKey: .startedAt)
         self.completedAt = try container.decodeIfPresent(String.self, forKey: .completedAt)
-        self.failureReason = try container.decodeIfPresent(String.self, forKey: .failureReason)
+        self.failure = try container.decodeIfPresent(WorkflowFailure.self, forKey: .failure)
         let requirementsDecoder = try container.superDecoder(forKey: .requirements)
         self.requirements = try WorkflowStepRegistry.decodeRequirements(
             stepID: stepID,

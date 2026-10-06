@@ -19,13 +19,29 @@ private func workflowIDRequirements(
         face: .init(faceFrontPhotoOnly: true))
 }
 
+private func idFailure(
+    _ code: WorkflowFailure.Code,
+    action: WorkflowFailure.UserAction,
+    slot: WorkflowDocumentSlot? = nil
+) -> WorkflowFailure {
+    WorkflowFailure(
+        code: code,
+        category: .other,
+        userAction: action,
+        isRetryable: true,
+        slot: slot,
+        message: "server text")
+}
+
+private let unclassifiedFailure = idFailure(.unknown, action: .retryStep)
+
 private func image(_ byte: UInt8) -> FileInput {
     .data(Data([0xFF, 0xD8, 0xFF, byte]))
 }
 
 private func idOutcome(
     status: WorkflowStepStatus,
-    failureReason: String? = nil,
+    failure: WorkflowFailure? = nil,
     currentStep: Int?,
     attemptsRemaining: Int?,
     sessionStatus: SessionStatus = .pending,
@@ -35,7 +51,7 @@ private func idOutcome(
     WorkflowStepOutcome(
         stepID: .idVerification,
         stepStatus: status,
-        failureReason: failureReason,
+        failure: failure,
         currentStep: currentStep,
         attemptsRemaining: attemptsRemaining,
         sessionStatus: sessionStatus,
@@ -285,7 +301,7 @@ func idStepUploadsAllCapturesAndSubmitsDeclaredTypes() async throws {
 func failedAttemptRetryRecapturesAndReuploads() async {
     let retryable = idOutcome(
         status: .inProgress,
-        failureReason: "DOCUMENT_MISMATCH",
+        failure: unclassifiedFailure,
         currentStep: 0,
         attemptsRemaining: 1)
     let terminal = idOutcome(
@@ -308,7 +324,7 @@ func failedAttemptRetryRecapturesAndReuploads() async {
     #expect(
         model.phase
             == .retry(
-                failureReason: "DOCUMENT_MISMATCH",
+                failure: unclassifiedFailure,
                 attemptsRemaining: 1))
 
     model.retry()
@@ -327,7 +343,7 @@ func failedAttemptRetryRecapturesAndReuploads() async {
 func idStepDoesNotOfferRetryWhenBudgetIsExhausted() async {
     let exhausted = idOutcome(
         status: .inProgress,
-        failureReason: "DOCUMENT_MISMATCH",
+        failure: unclassifiedFailure,
         currentStep: 0,
         attemptsRemaining: 0,
         attempts: 1)
@@ -350,7 +366,7 @@ func idStepDoesNotOfferRetryWhenBudgetIsExhausted() async {
 func idStepOffersRetryForUnlimitedBudget() async {
     let retryable = idOutcome(
         status: .inProgress,
-        failureReason: "DOCUMENT_MISMATCH",
+        failure: unclassifiedFailure,
         currentStep: 0,
         attemptsRemaining: nil)
     let spy = IDStepSpy(outcomes: [retryable])
@@ -367,6 +383,235 @@ func idStepOffersRetryForUnlimitedBudget() async {
     #expect(
         model.phase
             == .retry(
-                failureReason: "DOCUMENT_MISMATCH",
+                failure: unclassifiedFailure,
                 attemptsRemaining: nil))
+}
+
+// MARK: - Targeted retry
+
+/// Runs a driver's-licence primary (plus a passport secondary when required)
+/// and a selfie through to the first outcome.
+@MainActor
+private func runFirstAttempt(
+    _ model: IDVerificationStepFlowModel,
+    secondary: Bool = false
+) async {
+    model.start()
+    model.selectDocumentType(.driversLicense)
+    model.documentCaptured(front: image(1), back: image(2))
+    if secondary {
+        model.selectDocumentType(.passport)
+        model.documentCaptured(front: image(3), back: nil)
+    }
+    model.selfieCaptured(image(4))
+    await model.awaitPendingWork()
+}
+
+private let completedOutcome = idOutcome(
+    status: .completed,
+    currentStep: nil,
+    attemptsRemaining: 0,
+    sessionStatus: .submitted,
+    sessionProgress: .completed,
+    attempts: 2)
+
+@MainActor @Test
+func selfieFailureRetakesOnlyTheSelfieAndReusesDocumentKeys() async throws {
+    let failure = idFailure(.selfieFaceNotDetected, action: .retakeSelfie)
+    let retryable = idOutcome(
+        status: .inProgress, failure: failure, currentStep: 0, attemptsRemaining: 1)
+    let spy = IDStepSpy(outcomes: [retryable, completedOutcome])
+    let model = makeIDModel(
+        requirements: workflowIDRequirements(validTypes: ["drivers-license"]),
+        spy: spy)
+
+    await runFirstAttempt(model)
+    #expect(model.phase == .retry(failure: failure, attemptsRemaining: 1))
+
+    model.retry()
+    #expect(model.phase == .capturingSelfie)
+    #expect(model.selectedWireType(for: .primary) == "drivers-license")
+
+    model.selfieCaptured(image(9))
+    await model.awaitPendingWork()
+
+    #expect(spy.uploadCalls.count == 2)
+    #expect(Set(spy.uploadCalls[0].keys) == [.idFront, .idBack, .selfieFront])
+    #expect(Set(spy.uploadCalls[1].keys) == [.selfieFront])
+
+    let resubmission = try #require(spy.submissions.last)
+    #expect(spy.submissions.count == 2)
+    #expect(resubmission.documentType == "drivers-license")
+    #expect(resubmission.uploads == spy.submissions[0].uploads)
+    #expect(resubmission.uploads[.idFront] == "key-id_front")
+    #expect(resubmission.uploads[.idBack] == "key-id_back")
+    #expect(resubmission.uploads[.selfieFront] == "key-selfie_front")
+    #expect(spy.completed == [completedOutcome])
+}
+
+@MainActor @Test
+func consecutiveSelfieFailuresKeepReusingTheDocumentKeys() async {
+    let failure = idFailure(.selfieMultipleFaces, action: .retakeSelfie)
+    let retryable = idOutcome(
+        status: .inProgress, failure: failure, currentStep: 0, attemptsRemaining: nil)
+    let spy = IDStepSpy(outcomes: [retryable, retryable, completedOutcome])
+    let model = makeIDModel(
+        requirements: workflowIDRequirements(validTypes: ["drivers-license"]),
+        spy: spy)
+
+    await runFirstAttempt(model)
+    model.retry()
+    model.selfieCaptured(image(8))
+    await model.awaitPendingWork()
+    model.retry()
+    #expect(model.phase == .capturingSelfie)
+    model.selfieCaptured(image(9))
+    await model.awaitPendingWork()
+
+    #expect(spy.uploadCalls.map { Set($0.keys) } == [
+        [.idFront, .idBack, .selfieFront], [.selfieFront], [.selfieFront],
+    ])
+    #expect(spy.submissions.last?.uploads[.idFront] == "key-id_front")
+    #expect(spy.completed.map(\.attempts) == [3])
+}
+
+@MainActor @Test
+func differentDocumentFailureReturnsToTypeSelectionForTheFailingSlot() async {
+    let failure = idFailure(
+        .documentTypeNotAccepted, action: .useDifferentDocument, slot: .secondary)
+    let retryable = idOutcome(
+        status: .inProgress, failure: failure, currentStep: 0, attemptsRemaining: 1)
+    let spy = IDStepSpy(outcomes: [retryable, completedOutcome])
+    let model = makeIDModel(
+        requirements: workflowIDRequirements(secondary: true),
+        spy: spy)
+
+    await runFirstAttempt(model, secondary: true)
+    model.retry()
+
+    #expect(model.phase == .selectingType(index: 1))
+    #expect(model.selectedWireType(for: .primary) == "drivers-license")
+    #expect(model.selectedWireType(for: .secondary) == nil)
+
+    model.selectDocumentType(.idCard)
+    model.documentCaptured(front: image(5), back: image(6))
+    #expect(model.phase == .capturingSelfie)
+    model.selfieCaptured(image(7))
+    await model.awaitPendingWork()
+
+    // A changed document is a fresh upload of everything.
+    #expect(
+        Set(spy.uploadCalls[1].keys) == [
+            .idFront, .idBack, .secondaryIDFront, .secondaryIDBack, .selfieFront,
+        ])
+    #expect(spy.submissions.last?.documentType == "drivers-license")
+    #expect(spy.submissions.last?.secondaryDocumentType == "national-id")
+    #expect(spy.completed == [completedOutcome])
+}
+
+@MainActor @Test
+func differentDocumentFailureWithoutSlotReturnsToThePrimaryPicker() async {
+    let failure = idFailure(.documentTypeNotAccepted, action: .useDifferentDocument)
+    let retryable = idOutcome(
+        status: .inProgress, failure: failure, currentStep: 0, attemptsRemaining: 1)
+    let spy = IDStepSpy(outcomes: [retryable])
+    let model = makeIDModel(
+        requirements: workflowIDRequirements(secondary: true),
+        spy: spy)
+
+    await runFirstAttempt(model, secondary: true)
+    model.retry()
+
+    #expect(model.phase == .selectingType(index: 0))
+    #expect(model.selectedWireType(for: .primary) == nil)
+    #expect(model.selectedWireType(for: .secondary) == nil)
+}
+
+@MainActor @Test
+func retakeDocumentFailureRecapturesTheFailingSlotWithTheSameType() async {
+    let failure = idFailure(.idTextNotReadable, action: .retakeDocument, slot: .secondary)
+    let retryable = idOutcome(
+        status: .inProgress, failure: failure, currentStep: 0, attemptsRemaining: 1)
+    let spy = IDStepSpy(outcomes: [retryable, completedOutcome])
+    let model = makeIDModel(
+        requirements: workflowIDRequirements(secondary: true),
+        spy: spy)
+
+    await runFirstAttempt(model, secondary: true)
+    model.retry()
+
+    #expect(
+        model.phase
+            == .capturingDocument(slot: .secondary, type: .passport, captureMode: .frontOnly))
+    #expect(model.selectedWireType(for: .primary) == "drivers-license")
+    #expect(model.selectedWireType(for: .secondary) == "passport")
+
+    model.documentCaptured(front: image(5), back: nil)
+    #expect(model.phase == .capturingSelfie)
+    model.selfieCaptured(image(6))
+    await model.awaitPendingWork()
+
+    #expect(
+        Set(spy.uploadCalls[1].keys) == [.idFront, .idBack, .secondaryIDFront, .selfieFront])
+    #expect(spy.submissions.last?.secondaryDocumentType == "passport")
+    #expect(spy.completed == [completedOutcome])
+}
+
+@MainActor @Test
+func retakeDocumentFailureWithoutSlotRecapturesFromThePrimaryKeepingTypes() async {
+    let failure = idFailure(.idFaceNotDetected, action: .retakeDocument)
+    let retryable = idOutcome(
+        status: .inProgress, failure: failure, currentStep: 0, attemptsRemaining: 1)
+    let spy = IDStepSpy(outcomes: [retryable])
+    let model = makeIDModel(
+        requirements: workflowIDRequirements(secondary: true),
+        spy: spy)
+
+    await runFirstAttempt(model, secondary: true)
+    model.retry()
+
+    #expect(
+        model.phase
+            == .capturingDocument(
+                slot: .primary, type: .driversLicense, captureMode: .frontAndBack))
+
+    // The secondary keeps its type, so it goes straight back to capture.
+    model.documentCaptured(front: image(5), back: image(6))
+    #expect(
+        model.phase
+            == .capturingDocument(slot: .secondary, type: .passport, captureMode: .frontOnly))
+}
+
+@MainActor @Test
+func failureWithoutATargetedActionRestartsFromTypeSelection() async {
+    for action in [WorkflowFailure.UserAction.retryStep, .retryLiveness, .none] {
+        let retryable = idOutcome(
+            status: .inProgress,
+            failure: idFailure(.unknown, action: action),
+            currentStep: 0,
+            attemptsRemaining: 1)
+        let spy = IDStepSpy(outcomes: [retryable])
+        let model = makeIDModel(
+            requirements: workflowIDRequirements(validTypes: ["drivers-license"]),
+            spy: spy)
+
+        await runFirstAttempt(model)
+        model.retry()
+
+        #expect(model.phase == .selectingType(index: 0))
+        #expect(model.selectedWireType(for: .primary) == nil)
+    }
+}
+
+@MainActor @Test
+func idStepAlwaysOpensOnTypeSelection() {
+    // A resumed step is built from scratch: whatever the session's last
+    // attempt was, there is no retry screen to reopen.
+    let spy = IDStepSpy(outcomes: [])
+    let model = makeIDModel(requirements: workflowIDRequirements(), spy: spy)
+
+    model.start()
+
+    #expect(model.phase == .selectingType(index: 0))
+    #expect(spy.uploadCalls.isEmpty)
 }

@@ -25,6 +25,9 @@ final class CustomFaceLivenessStepFlowModel: ObservableObject {
     typealias FetchStateOperation = () async throws -> WorkflowExecutionState
 
     @Published private(set) var state: State = .running
+    /// Why the last attempt failed, as applicant copy for the capture view's
+    /// retry screen. `nil` until an attempt fails with budget left.
+    @Published private(set) var retryCopy: WorkflowFailureCopy.Copy?
     private(set) var attemptsRemaining: Int?
 
     private let stepID: WorkflowStepID
@@ -95,6 +98,8 @@ final class CustomFaceLivenessStepFlowModel: ObservableObject {
                 } else if outcome.canRetry {
                     // Not live, budget left: the custom view is already showing
                     // its own "Try again" — hand the screen back to it.
+                    self.retryCopy = WorkflowFailureCopy.failure(
+                        outcome.failure, step: self.stepID)
                     self.state = .running
                 } else {
                     self.complete(outcome)
@@ -116,7 +121,7 @@ final class CustomFaceLivenessStepFlowModel: ObservableObject {
 
     /// Transient failures stay on the custom view, which offers its own retry
     /// (no server attempt is consumed until `complete` scores frames). Anything
-    /// else — permission, cancellation, auth, conflict — ends the step.
+    /// else — permission, cancellation, auth, any other conflict — ends the step.
     private func handle(_ error: DeepIDVError) {
         let hasAttempts = attemptsRemaining.map { $0 > 0 } ?? true
         if Self.isRetryable(error), hasAttempts {
@@ -152,7 +157,8 @@ final class CustomFaceLivenessStepFlowModel: ObservableObject {
         return WorkflowStepOutcome(
             stepID: step.stepID,
             stepStatus: step.status,
-            failureReason: step.failureReason,
+            failure: step.failure,
+            sessionFailure: execution.sessionFailure,
             currentStep: execution.currentStep,
             attemptsRemaining: execution.attemptsRemaining,
             sessionStatus: execution.status,
@@ -161,6 +167,11 @@ final class CustomFaceLivenessStepFlowModel: ObservableObject {
     }
 
     private static func isRetryable(_ error: DeepIDVError) -> Bool {
+        // The frames did not all reach storage: no attempt was consumed, and
+        // the view's retry captures and uploads again.
+        if error.apiCode == .livenessUploadIncomplete {
+            return true
+        }
         switch error.kind {
         case .network, .timeout, .rateLimit, .serviceUnavailable, .api, .captureFailed:
             return true

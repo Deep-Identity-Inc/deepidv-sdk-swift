@@ -14,6 +14,7 @@
 public struct IPCheckResult: Sendable, Equatable, Decodable {
     /// The check verdict. Wire raw values are uppercase
     /// (`HIT` / `CLEAR` / `UNAVAILABLE`).
+    @nonexhaustive
     public enum Verdict: Sendable, Equatable {
         /// The IP tripped the check (VPN/proxy/Tor/datacenter, or an
         /// ineligible jurisdiction).

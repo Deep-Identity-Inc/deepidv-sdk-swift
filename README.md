@@ -187,18 +187,141 @@ DeepIDVWorkflowView(client: client, sessionID: sessionID) { result in /* … */ 
 ```
 
 - The result is a `WorkflowRunResult`: the session's `sessionStatus` and
-  `sessionProgress`, plus each step's status, attempt count, and failure reason.
+  `sessionProgress`, each step's status, attempt count, and typed `failure`,
+  and a `sessionFailure` when the run ended without reaching submission. See
+  [Workflow failures](#workflow-failures).
 - A run that ends `FAILED` because a step's attempts ran out is still a
-  completed run — it arrives on `.success`. `.failure` is reserved for errors
-  (network, permission, cancellation, …).
+  completed run — it arrives on `.success`, with `sessionFailure` set.
+  `.failure` is reserved for errors (network, permission, cancellation, …).
+- When a step ends the run with an error, the view shows an error screen and
+  reports `.failure` once the applicant closes it. Connectivity and server
+  faults also offer **Try again**, which continues from the current step.
 - The final verification decision is made server-side after the run and isn't
   part of the result; read it from your backend.
-- A session can only be run once: one that has already started, or is
-  terminal, fails with `.conflict`.
+- `DeepIDVWorkflowView(client:sessionID:onResult:)` only runs a session that
+  has never been submitted to: one that has already started, or is terminal,
+  fails with `.conflict`. To continue a started session, resume it.
+
+### Resuming a session
+
+A run can end before the session is finished — the applicant cancels, the app
+is killed, or a step ends on an error. The session is still open on the server,
+so continue it from its current step instead of creating a new one:
+
+```swift
+// With UI — continues from the session's current step.
+DeepIDVWorkflowView(client: client, resumingSessionID: sessionID) { result in /* … */ }
+
+// Headless — inspect where the session stands before presenting UI.
+do {
+    let state = try await client.resumeWorkflowSession(sessionID: sessionID)
+    print("resuming at step", state.currentStep ?? -1, "attempts left", state.attemptsRemaining as Any)
+} catch let error as DeepIDVError where error.apiCode == .sessionTerminal {
+    let final = try await client.fetchWorkflowState(sessionID: sessionID)  // read the outcome instead
+}
+```
+
+- Resuming works for any session that isn't finished, whether or not it has
+  been started.
+- The session keeps its attempt budget: attempts used before the resume stay
+  used.
+- Captures from the earlier run are not kept. The current step starts again
+  from its beginning (type selection for ID verification, a new capture for
+  face liveness), even when its last attempt failed. To tell the applicant why
+  that attempt failed, read `steps[i].failure` from the state returned by
+  `resumeWorkflowSession(sessionID:)` before presenting the view.
+- The final `WorkflowRunResult` covers the whole session, including the steps
+  completed before the resume.
+- A finished session (submitted, completed, failed, or expired) can't be
+  resumed: it fails with `.conflict` and `apiCode == .sessionTerminal`.
 
 The headless helpers `createWorkflowSession(workflowID:user:expiresInHours:)`,
-`startWorkflowSession(sessionID:)`, and `fetchWorkflowState(sessionID:)` expose
-the same session lifecycle without UI.
+`startWorkflowSession(sessionID:)`, `resumeWorkflowSession(sessionID:)`, and
+`fetchWorkflowState(sessionID:)` expose the same session lifecycle without UI.
+
+## Workflow failures
+
+Failures are typed, so you can branch on them without parsing strings.
+
+- **`WorkflowFailure`** — why a step's most recent attempt failed a check. It
+  is on every step outcome (`WorkflowRunResult.steps[i].failure`,
+  `WorkflowExecutionState.steps[i].failure`), both while the step can still be
+  retried and once it has failed for good.
+- **`WorkflowSessionFailure`** — why a run ended without reaching submission.
+  It is on `WorkflowRunResult.sessionFailure` and
+  `WorkflowExecutionState.sessionFailure`.
+
+```swift
+DeepIDVWorkflowView(client: client, workflowID: id, user: user) { result in
+    switch result {
+    case .success(let run):
+        if let failure = run.sessionFailure {
+            switch failure.code {
+            case .attemptsExhausted: log("Failed at \(failure.stepID?.rawValue ?? "?"): \(failure.failure?.code.rawValue ?? "?")")
+            case .sessionExpired:    restart()
+            default:                 break
+            }
+        }
+    case .failure(let error):
+        if error.apiCode == .sessionTerminal { /* already finished */ }
+        switch error.kind {
+        case .cancelled: break
+        @unknown default: report(error)
+        }
+    }
+}
+```
+
+A `WorkflowFailure` carries:
+
+| Field | Meaning |
+|---|---|
+| `code` | The specific cause (table below). |
+| `category` | Coarse grouping: `.document`, `.selfie`, `.faceMatch`, `.liveness`, `.other`. |
+| `userAction` | What the applicant should do next: `.retakeDocument`, `.useDifferentDocument`, `.retakeSelfie`, `.retryLiveness`, `.retryStep`, `.none`. |
+| `isRetryable` | Whether the step can still be submitted again. `false` once its attempts have run out. |
+| `slot` | The document the failure is about (`.primary`, `.secondary`, `.tertiary`), when it is document-specific. |
+| `message` | A developer-facing description from the server. |
+
+`WorkflowFailure.Code`:
+
+| Code | Meaning |
+|---|---|
+| `.idFaceNotDetected` | No face photo was found on the ID. |
+| `.idTextNotReadable` | The text on the ID couldn't be read. |
+| `.documentTypeNotAccepted` | The workflow doesn't accept this type of document. |
+| `.documentTypeUnrecognized` | The document couldn't be recognised as the selected type. |
+| `.documentTypeLowConfidence` | The document type was recognised with too little confidence. |
+| `.selfieFaceNotDetected` | No face was found in the selfie. |
+| `.selfieMultipleFaces` | More than one face was found in the selfie. |
+| `.selfieIDFaceMismatch` | The selfie doesn't match the face on the ID. |
+| `.livenessIDMismatch` | The face in the liveness check doesn't match the ID. |
+| `.livenessFailed` | The liveness check didn't pass. |
+| `.unknown` | The server couldn't classify the failure. |
+
+`WorkflowSessionFailure.Code`:
+
+| Code | Meaning |
+|---|---|
+| `.attemptsExhausted` | The session ran out of attempts. `stepID` and `failure` say where and why. |
+| `.stepBlocked` | A step failed in a way that can't be retried. |
+| `.sessionExpired` | The session expired before it was finished. |
+
+- **Codes are open sets.** `WorkflowFailure.Code`, `WorkflowSessionFailure.Code`
+  and `APIErrorCode` are structs, not enums: a newer server can send a code this
+  SDK version has no constant for, and it arrives as-is in `rawValue`. Compare
+  against the constants and keep a `default:` arm. Prefer `category` and
+  `userAction` for decisions — they are small and stable.
+- **`message` fields are not for display.** `WorkflowFailure.message` and
+  `DeepIDVError.message` are developer strings for logs. The SDK's own screens
+  never show them; build applicant-facing text from `code` / `userAction`.
+- **The SDK acts on `userAction` for you.** In `DeepIDVWorkflowView`, a selfie
+  failure retakes only the selfie, a document type the workflow doesn't accept
+  returns to the type picker for that document, a document that couldn't be
+  read is captured again with the same type, and a liveness ↔ ID mismatch
+  explains itself on the liveness retry screen.
+- Scores and thresholds are not exposed. `FaceLivenessResult.confidence` is
+  `nil` on a failed workflow liveness attempt.
 
 ## Drop-in guided flow
 
@@ -461,8 +584,19 @@ inline.
 ## Errors
 
 Everything throwable is the single value type `DeepIDVError`, with a `Kind`
-that can grow in future releases — include a `default:` arm when switching on
-it:
+that can grow in future releases. Every public enum in the SDK is
+non-exhaustive: a `switch` over one must end in `@unknown default`, or it won't
+compile in Swift 6 mode (a warning in Swift 5 mode).
+
+```swift
+switch error.kind {
+case .cancelled: break
+case .network, .timeout: retryLater()
+@unknown default: report(error)
+}
+```
+
+The kinds are:
 
 - HTTP/transport: `.authentication`, `.authorization`, `.notFound`, `.validation`,
   `.insufficientFunds`, `.rateLimit`, `.serviceUnavailable`, `.api`, `.network`,
@@ -471,6 +605,13 @@ it:
 - iGaming: `.antiCheatBlocked` — the guided flow's anti-cheat step returned
   `action == "block"`, ending the flow. Only the guided flow produces this; the
   headless `checkAntiCheat` surfaces a block as a normal `AntiCheatResult`.
+
+**`apiCode`.** When the server refuses a request it also says why in a
+machine-readable code, exposed as `DeepIDVError.apiCode` (`APIErrorCode?`) —
+for example `.sessionTerminal`, `.sessionAlreadyStarted`, `.stepOutOfOrder`,
+`.invalidMedia`, `.insufficientFunds`. It is `nil` for transport, capture and
+other SDK-originated errors, and when the server sends no code. `kind` tells
+you the class of error; `apiCode` tells you the exact cause.
 
 429 and 5xx responses are retried with exponential backoff (`maxRetries`);
 capture errors are never retried. API keys are redacted everywhere — the full

@@ -7,7 +7,8 @@ import SwiftUI
 struct WorkflowStepOutcome: Sendable, Equatable {
     let stepID: WorkflowStepID
     let stepStatus: WorkflowStepStatus
-    let failureReason: String?
+    let failure: WorkflowFailure?
+    let sessionFailure: WorkflowSessionFailure?
     let currentStep: Int?
     let attemptsRemaining: Int?
     let sessionStatus: SessionStatus
@@ -18,7 +19,8 @@ struct WorkflowStepOutcome: Sendable, Equatable {
         self.init(
             stepID: result.stepID,
             stepStatus: result.stepStatus,
-            failureReason: result.failureReason,
+            failure: result.failure,
+            sessionFailure: result.sessionFailure,
             currentStep: result.currentStep,
             attemptsRemaining: result.attemptsRemaining,
             sessionStatus: result.sessionStatus,
@@ -29,7 +31,8 @@ struct WorkflowStepOutcome: Sendable, Equatable {
     init(
         stepID: WorkflowStepID,
         stepStatus: WorkflowStepStatus,
-        failureReason: String?,
+        failure: WorkflowFailure?,
+        sessionFailure: WorkflowSessionFailure? = nil,
         currentStep: Int?,
         attemptsRemaining: Int?,
         sessionStatus: SessionStatus,
@@ -38,7 +41,8 @@ struct WorkflowStepOutcome: Sendable, Equatable {
     ) {
         self.stepID = stepID
         self.stepStatus = stepStatus
-        self.failureReason = failureReason
+        self.failure = failure
+        self.sessionFailure = sessionFailure
         self.currentStep = currentStep
         self.attemptsRemaining = attemptsRemaining
         self.sessionStatus = sessionStatus
@@ -66,7 +70,8 @@ struct WorkflowStepOutcome: Sendable, Equatable {
         WorkflowStepOutcome(
             stepID: stepID,
             stepStatus: stepStatus,
-            failureReason: failureReason,
+            failure: failure,
+            sessionFailure: sessionFailure,
             currentStep: currentStep,
             attemptsRemaining: attemptsRemaining,
             sessionStatus: sessionStatus,

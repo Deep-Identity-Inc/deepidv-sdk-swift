@@ -7,6 +7,7 @@ import Foundation
 /// An explicit enum — the SDK never guesses whether a `String` is a path,
 /// raw base64, or a data URL. The caller states the shape and normalization is a
 /// direct `switch` with no heuristics.
+@nonexhaustive
 public enum FileInput: Sendable {
     /// Raw bytes, ready to upload as-is.
     case data(Data)

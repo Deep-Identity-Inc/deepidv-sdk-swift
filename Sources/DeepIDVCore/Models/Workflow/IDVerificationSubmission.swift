@@ -5,6 +5,7 @@ import Foundation
 /// Hosted-flow `Uploads` slots accepted by
 /// `POST /v1/sessions/{session_id}/uploads` and echoed as keys in an
 /// `ID_VERIFICATION` submission's `uploads` object.
+@nonexhaustive
 public enum SessionUploadSlot: String, Sendable, CaseIterable, Codable, Hashable {
     case idFront = "id_front"
     case idBack = "id_back"

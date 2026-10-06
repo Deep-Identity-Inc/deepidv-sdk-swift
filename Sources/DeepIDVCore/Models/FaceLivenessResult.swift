@@ -15,6 +15,7 @@
 public struct FaceLivenessResult: Sendable, Equatable, Decodable {
     /// Normalized session status. The wire raw values are uppercase
     /// (`SUCCEEDED` / `IN_PROGRESS` / `FAILED`).
+    @nonexhaustive
     public enum Status: String, Sendable, Equatable, Decodable {
         case succeeded = "SUCCEEDED"
         case inProgress = "IN_PROGRESS"
