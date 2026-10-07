@@ -274,38 +274,38 @@ DeepIDVWorkflowView(client: client, workflowID: id, user: user) { result in
 
 A `WorkflowFailure` carries:
 
-| Field | Meaning |
-|---|---|
-| `code` | The specific cause (table below). |
-| `category` | Coarse grouping: `.document`, `.selfie`, `.faceMatch`, `.liveness`, `.other`. |
-| `userAction` | What the applicant should do next: `.retakeDocument`, `.useDifferentDocument`, `.retakeSelfie`, `.retryLiveness`, `.retryStep`, `.none`. |
-| `isRetryable` | Whether the step can still be submitted again. `false` once its attempts have run out. |
-| `slot` | The document the failure is about (`.primary`, `.secondary`, `.tertiary`), when it is document-specific. |
-| `message` | A developer-facing description from the server. |
+| Field         | Meaning                                                                                                                                  |
+| ------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `code`        | The specific cause (table below).                                                                                                        |
+| `category`    | Coarse grouping: `.document`, `.selfie`, `.faceMatch`, `.liveness`, `.other`.                                                            |
+| `userAction`  | What the applicant should do next: `.retakeDocument`, `.useDifferentDocument`, `.retakeSelfie`, `.retryLiveness`, `.retryStep`, `.none`. |
+| `isRetryable` | Whether the step can still be submitted again. `false` once its attempts have run out.                                                   |
+| `slot`        | The document the failure is about (`.primary`, `.secondary`, `.tertiary`), when it is document-specific.                                 |
+| `message`     | A developer-facing description from the server.                                                                                          |
 
 `WorkflowFailure.Code`:
 
-| Code | Meaning |
-|---|---|
-| `.idFaceNotDetected` | No face photo was found on the ID. |
-| `.idTextNotReadable` | The text on the ID couldn't be read. |
-| `.documentTypeNotAccepted` | The workflow doesn't accept this type of document. |
-| `.documentTypeUnrecognized` | The document couldn't be recognised as the selected type. |
+| Code                         | Meaning                                                      |
+| ---------------------------- | ------------------------------------------------------------ |
+| `.idFaceNotDetected`         | No face photo was found on the ID.                           |
+| `.idTextNotReadable`         | The text on the ID couldn't be read.                         |
+| `.documentTypeNotAccepted`   | The workflow doesn't accept this type of document.           |
+| `.documentTypeUnrecognized`  | The document couldn't be recognised as the selected type.    |
 | `.documentTypeLowConfidence` | The document type was recognised with too little confidence. |
-| `.selfieFaceNotDetected` | No face was found in the selfie. |
-| `.selfieMultipleFaces` | More than one face was found in the selfie. |
-| `.selfieIDFaceMismatch` | The selfie doesn't match the face on the ID. |
-| `.livenessIDMismatch` | The face in the liveness check doesn't match the ID. |
-| `.livenessFailed` | The liveness check didn't pass. |
-| `.unknown` | The server couldn't classify the failure. |
+| `.selfieFaceNotDetected`     | No face was found in the selfie.                             |
+| `.selfieMultipleFaces`       | More than one face was found in the selfie.                  |
+| `.selfieIDFaceMismatch`      | The selfie doesn't match the face on the ID.                 |
+| `.livenessIDMismatch`        | The face in the liveness check doesn't match the ID.         |
+| `.livenessFailed`            | The liveness check didn't pass.                              |
+| `.unknown`                   | The server couldn't classify the failure.                    |
 
 `WorkflowSessionFailure.Code`:
 
-| Code | Meaning |
-|---|---|
+| Code                 | Meaning                                                                    |
+| -------------------- | -------------------------------------------------------------------------- |
 | `.attemptsExhausted` | The session ran out of attempts. `stepID` and `failure` say where and why. |
-| `.stepBlocked` | A step failed in a way that can't be retried. |
-| `.sessionExpired` | The session expired before it was finished. |
+| `.stepBlocked`       | A step failed in a way that can't be retried.                              |
+| `.sessionExpired`    | The session expired before it was finished.                                |
 
 - **Codes are open sets.** `WorkflowFailure.Code`, `WorkflowSessionFailure.Code`
   and `APIErrorCode` are structs, not enums: a newer server can send a code this
@@ -421,14 +421,14 @@ CustomFaceLivenessView(client: client, sessionID: sessionID) { result in
   `client.faceProbe(_:)` on each camera frame to decide when to capture, and
   `client.makeMovementReplayRecorder()` to attach an optional replay clip.
 
-## Re-verify with face search
+## Re-verify Flow
 
-`client.makeReVerifyView(workflowID:onResult:)` returns a view that
+`client.makeReVerifyView(workflowID:email:onResult:)` returns a view that
 re-verifies a returning applicant. Presenting it creates the re-verification,
 runs the liveness challenge, uploads the capture, and reports one result:
 
 ```swift
-client.makeReVerifyView(workflowID: "wf_…") { result in
+client.makeReVerifyView(workflowID: "wf_…", email: user.email) { result in
     switch result {
     case .success(.verified(let reVerificationID, let originalSessionID, let userID)):
         // The applicant is the user of `originalSessionID`.
@@ -443,39 +443,41 @@ client.makeReVerifyView(workflowID: "wf_…") { result in
 }
 ```
 
+- **You name the applicant.** Pass the email of a user in your organization
+  who was verified on this workflow before. The view never asks for it. Their
+  face is matched against that user's verified sessions; a face that belongs to
+  someone else is not re-verified.
 - **Enrolment is automatic.** Every session approved on a workflow with
   re-verification enabled is enrolled after approval; nothing in the app
-  registers faces. The applicant isn't identified up front — they're found by
-  face among your organization's approved applicants on that workflow.
+  registers faces.
 - **One sitting.** A failed match or liveness check starts a new challenge in
   place, with guidance and the remaining-attempts count. Network and capture
   errors offer **Try again** (re-running only the call that failed) and
   **Close**. There is no cancel control during capture: dismiss the view to
   cancel.
 
-**Results.** `onResult` fires exactly once:
+**Results.** `onResult` fires exactly once, with one of:
 
-- `.success(.verified(reVerificationID:originalSessionID:userID:))` — matched to
-  exactly one approved session in your organization under this workflow.
-- `.success(.failed(reason:))`, with `reason`:
-  - `.notReVerified` — the face was recognized, but it can't be re-verified for
-    this workflow in your organization. Ends on the first occurrence.
-  - `.attemptsExhausted` — the attempt budget is spent, usually because nobody
-    was recognized. The server doesn't say why an attempt failed, so a
-    recognized-but-ineligible applicant on the **final** allowed attempt (or
-    the only one, when the workflow allows one) is also reported here.
-  - `.notEligible(_)` — re-verification can't run at all; never fixable by the
-    applicant:
-    - `.notFound` — the workflow doesn't exist for this API key's organization,
-      or re-verification isn't available to the organization;
-    - `.disabled` — the workflow is inactive, or re-verification is off on it;
-    - `.insufficientBalance` — the organization's balance can't cover the check;
-    - `.notAuthorized` — this API key can't use re-verification (for example, a
-      sandbox key).
-  - `.expired` — the re-verification expired or had already ended before a
-    decision. Present the view again to start a new one.
-- `.failure(DeepIDVError)` — an error the applicant closed, or `.cancelled` when
-  the view was dismissed before an outcome.
+| Result                                                            | Meaning                                                                                                                                                                                                            |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `.success(.verified(reVerificationID:originalSessionID:userID:))` | Re-verified: matched to exactly one approved session in your organization under this workflow. `userID` is the user the email resolved to.                                                                         |
+| `.success(.failed(reason: .notReVerified))`                       | The user was recognized, but it can't be re-verified for this workflow in your organization. Ends on the first occurrence.                                                                                         |
+| `.success(.failed(reason: .attemptsExhausted))`                   | The attempt budget is spent, usually because nobody was recognized. A recognized-but-ineligible user on the **final** allowed attempt is also reported here, because the server doesn't say why an attempt failed. |
+| `.success(.failed(reason: .notEligible(_)))`                      | Re-verification can't run at all. Ends immediately with no retry; never fixable by the applicant (reasons below).                                                                                                  |
+| `.success(.failed(reason: .expired))`                             | The re-verification expired or had already ended before a decision. Present the view again to start a new one.                                                                                                     |
+| `.failure(DeepIDVError)`                                          | An error the applicant closed on the view's error screen, or a blank `email` (kind `.validation`, ends immediately with no screen).                                                                                |
+| `.failure(DeepIDVError)`, kind `.cancelled`                       | The view was dismissed before an outcome.                                                                                                                                                                          |
+
+`.notEligible(_)` carries one of:
+
+| `NotEligibleReason`      | Meaning                                                                                                                                                                         |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.notFound`              | The workflow doesn't exist for this API key's organization, or re-verification isn't available to the organization.                                                             |
+| `.disabled`              | The workflow is inactive, or re-verification is off on it.                                                                                                                      |
+| `.insufficientBalance`   | The organization's balance can't cover the check.                                                                                                                               |
+| `.notAuthorized`         | This API key can't use re-verification (for example, a sandbox key).                                                                                                            |
+| `.userNotFound`          | No user with this email exists in your organization. The SDK never creates one: check the email you passed.                                                                     |
+| `.notPreviouslyVerified` | The user exists, but has no verified session under this workflow to match against. A session approved only moments ago may land here briefly while it is prepared for matching. |
 
 **The view renders nothing once `onResult` fires** — no confirmation or failure
 screen, no Done button. Dismiss it and show your own result screen, including
@@ -552,7 +554,7 @@ let result = try await client.checkAntiCheat(
 `DeviceFingerprint.current()` is a random UUID minted once and persisted in
 the keychain: stable across app reinstalls, per-device (a backup restored
 onto new hardware mints a fresh value), no permissions, and not derived from
-hardware or user data. It's a linkage *signal*, not security — a wiped device
+hardware or user data. It's a linkage _signal_, not security — a wiped device
 starts fresh, and the backend weighs it alongside the face-dedup check. If
 you adopt it, declare a collected device ID with the fraud-prevention purpose
 in your app's privacy manifest. The SDK never attaches it automatically.

@@ -3,8 +3,8 @@
 import Foundation
 
 /// The business outcome of a re-verification run started with
-/// ``DeepIDVClient/makeReVerifyView(workflowID:onResult:)``, delivered as the
-/// `.success` side of its `onResult`.
+/// ``DeepIDVClient/makeReVerifyView(workflowID:email:onResult:)``, delivered as
+/// the `.success` side of its `onResult`.
 ///
 /// Errors and user cancellation are the `.failure` side of that `Result`
 /// (a ``DeepIDVError``), never a case here. The view renders nothing once
@@ -30,7 +30,9 @@ public enum ReVerifyResult: Sendable, Equatable {
     public enum FailureReason: Sendable, Equatable {
         /// The applicant's face was recognised, but it can't be re-verified
         /// for this workflow in your organization. Retrying can't change who
-        /// the face is, so this ends the run on the first occurrence.
+        /// the face is, so this ends the run on the first occurrence. The face
+        /// may also have been recognised as a different user of your
+        /// organization than the one you named.
         ///
         /// When this happens on the **last** allowed attempt it is reported as
         /// ``attemptsExhausted`` instead (see there).
@@ -69,5 +71,14 @@ public enum ReVerifyResult: Sendable, Equatable {
         case insufficientBalance
         /// This API key can't use re-verification (for example, a sandbox key).
         case notAuthorized
+        /// No user with this email exists in your organization. The SDK never
+        /// creates one: check the email you passed.
+        case userNotFound
+        /// The user exists, but has no verified session under this workflow
+        /// that re-verification can match against. Re-verification only works
+        /// for an applicant who completed verification on this workflow before.
+        /// A session approved only moments ago may also land here briefly while
+        /// it is being prepared for matching.
+        case notPreviouslyVerified
     }
 }

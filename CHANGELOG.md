@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking:** `makeReVerifyView(workflowID:onResult:)` is replaced by
+  `makeReVerifyView(workflowID:email:onResult:)`, because the server now
+  requires the applicant's email. You pass the email of a user in your
+  organization who was verified on the workflow before; the view never asks
+  the applicant for it. A blank email ends the flow with `.failure` (kind
+  `.validation`).
+
+### Added
+
+- `ReVerifyResult.NotEligibleReason.userNotFound` and
+  `.notPreviouslyVerified`: the email isn't a user in your organization, or
+  that user has no verified session under the workflow to match against.
+
 ## [1.1.0] - 2026-10-05
 
 Workflow failures are now typed end to end.

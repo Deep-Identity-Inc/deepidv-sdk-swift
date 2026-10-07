@@ -14,11 +14,12 @@ struct ReVerifyFlowView: View {
     init(
         client: DeepIDVClient,
         workflowID: String,
+        email: String,
         onResult: @escaping (Result<ReVerifyResult, DeepIDVError>) -> Void
     ) {
         _model = StateObject(
             wrappedValue: ReVerifyFlowModel(
-                client: client, workflowID: workflowID, onResult: onResult))
+                client: client, workflowID: workflowID, email: email, onResult: onResult))
     }
 
     var body: some View {

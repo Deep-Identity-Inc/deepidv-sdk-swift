@@ -43,6 +43,8 @@ private let expiredError = serverCode("expired", .conflict, status: 409)
 private let alreadyCompleted = serverCode("already_completed", .conflict, status: 409)
 private let insufficientBalance = serverCode("insufficient_balance", .insufficientFunds, status: 402)
 private let reverifyDisabled = serverCode("reverify_disabled", .api, status: 422)
+private let userNotFound = serverCode("user_not_found", .api, status: 422)
+private let notPreviouslyVerified = serverCode("not_previously_verified", .api, status: 422)
 private let notFoundWithBody = serverCode("not_found", .notFound, status: 404)
 /// A 404 without the re-verification body keeps the HTTP layer's code.
 private let notFoundNoBody = DeepIDVError.notFound("Not Found")
@@ -68,6 +70,11 @@ enum ReVerifyRoute: Sendable, CaseIterable {
 private final class FakeReVerify {
     enum Operation: Hashable {
         case create, start, uploadURL, upload, complete
+    }
+
+    struct CreateCall: Equatable {
+        let workflowID: String
+        let email: String
     }
 
     struct UploadURLCall: Equatable {
@@ -99,7 +106,7 @@ private final class FakeReVerify {
     private var hanging: Set<Operation> = []
     private var phaseSubscription: AnyCancellable?
 
-    private(set) var createCalls: [String] = []
+    private(set) var createCalls: [CreateCall] = []
     private(set) var startCalls: [String] = []
     private(set) var uploadURLCalls: [UploadURLCall] = []
     private(set) var uploadCalls: [UploadCall] = []
@@ -125,10 +132,11 @@ private final class FakeReVerify {
         hanging.insert(operation)
     }
 
-    func makeModel() -> ReVerifyFlowModel {
+    func makeModel(email: String = "bob@x.com") -> ReVerifyFlowModel {
         let model = ReVerifyFlowModel(
             workflowID: "wf-1",
-            create: { try await self.create($0) },
+            email: email,
+            create: { try await self.create($0, email: $1) },
             startLiveness: { try await self.startLiveness($0) },
             requestUploadURLs: { try await self.requestUploadURLs($0, frameCount: $1, clipMimeType: $2) },
             uploadFrames: { try await self.uploadFrames($0, timeline: $1, clip: $2, to: $3) },
@@ -143,8 +151,8 @@ private final class FakeReVerify {
 
     // MARK: Operations
 
-    private func create(_ workflowID: String) async throws -> ReVerificationSession {
-        createCalls.append(workflowID)
+    private func create(_ workflowID: String, email: String) async throws -> ReVerificationSession {
+        createCalls.append(CreateCall(workflowID: workflowID, email: email))
         try await answer(.create, call: createCalls.count)
         return ReVerificationSession(
             reVerificationID: "rv-1", workflowID: workflowID, status: "PENDING",
@@ -288,7 +296,8 @@ struct ReVerifyFlowModelTests {
             fake.phases == ["checking", "liveness(lv-1)", "uploading", "deciding", "outcome"])
         #expect(fake.results == [.success(verifiedResult)])
         #expect(model.phase == .outcome(.success(verifiedResult)))
-        #expect(fake.createCalls == ["wf-1"])
+        #expect(
+            fake.createCalls == [FakeReVerify.CreateCall(workflowID: "wf-1", email: "bob@x.com")])
         #expect(fake.startCalls == ["rv-1"])
         #expect(
             fake.uploadURLCalls == [
@@ -484,6 +493,8 @@ struct ReVerifyFlowModelTests {
         (reverifyDisabled, .disabled),
         (insufficientBalance, .insufficientBalance),
         (sandboxForbidden, .notAuthorized),
+        (userNotFound, .userNotFound),
+        (notPreviouslyVerified, .notPreviouslyVerified),
     ])
     func notEligibleOnCreateEndsImmediately(
         error: DeepIDVError, reason: ReVerifyResult.NotEligibleReason
@@ -496,8 +507,61 @@ struct ReVerifyFlowModelTests {
 
         #expect(fake.results == [.success(.failed(reason: .notEligible(reason)))])
         #expect(model.phase == .outcome(.success(.failed(reason: .notEligible(reason)))))
+        // No failure screen in between.
+        #expect(fake.phases == ["checking", "outcome"])
         #expect(model.canRetry == false)
         #expect(fake.startCalls.isEmpty)
+    }
+
+    // MARK: Email
+
+    @Test(arguments: ["", "   ", "\n"])
+    func blankEmailFailsValidationWithoutCreate(email: String) async throws {
+        let fake = FakeReVerify()
+        let model = fake.makeModel(email: email)
+
+        model.start()
+        await model.awaitPendingWork()
+
+        let result = try #require(fake.results.first)
+        guard case .failure(let error) = result else {
+            Issue.record("expected .failure, got \(result)")
+            return
+        }
+        #expect(error.kind == .validation)
+        #expect(fake.results.count == 1)
+        #expect(fake.createCalls.isEmpty)
+        #expect(model.phase == .outcome(result))
+        #expect(fake.phases == ["checking", "outcome"])
+
+        model.cancel()
+        model.start()
+        await model.awaitPendingWork()
+        #expect(fake.results.count == 1)
+        #expect(fake.createCalls.isEmpty)
+    }
+
+    @Test func createReceivesTheTrimmedEmail() async {
+        let fake = FakeReVerify()
+        let model = fake.makeModel(email: "  bob@x.com \n")
+
+        await drive(model, through: .create)
+
+        #expect(
+            fake.createCalls == [FakeReVerify.CreateCall(workflowID: "wf-1", email: "bob@x.com")])
+    }
+
+    @Test func createRetrySendsTheSameTrimmedEmail() async {
+        let fake = FakeReVerify()
+        fake.fail(ReVerifyRoute.create, with: networkDown)
+        let model = fake.makeModel(email: "  bob@x.com \n")
+
+        await drive(model, through: .create)
+        model.retry()
+        await model.awaitPendingWork()
+
+        #expect(fake.createCalls.map(\.email) == ["bob@x.com", "bob@x.com"])
+        #expect(currentAttempt(model)?.livenessSessionID == "lv-1")
     }
 
     @Test(arguments: [ReVerifyRoute.start, .uploadURL, .complete])
