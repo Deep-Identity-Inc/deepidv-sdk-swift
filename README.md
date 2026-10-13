@@ -166,7 +166,7 @@ DeepIDVWorkflowView(
         email: "ada@example.com",
         firstName: "Ada",
         lastName: "Lovelace",
-        phone: "+15555550100",       // E.164
+        phone: "+15555550100",       // optional, E.164
         externalID: "your-user-id"   // optional
     )
 ) { result in
@@ -178,6 +178,9 @@ DeepIDVWorkflowView(
     }
 }
 ```
+
+`phone` is optional, but a workflow that includes a phone verification step
+needs one.
 
 Or run a session your backend created
 (`POST /v1/workflows/{workflow_id}/sessions`), passing the app only its id:

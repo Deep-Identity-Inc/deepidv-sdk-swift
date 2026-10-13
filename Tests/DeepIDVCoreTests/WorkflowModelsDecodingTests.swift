@@ -305,6 +305,13 @@ struct WorkflowModelsDecodingTests {
         #expect(object?["external_id"] == nil)
     }
 
+    @Test func workflowUserOmitsNilPhone() throws {
+        let user = WorkflowUser(email: "a@b.co", firstName: "A", lastName: "B")
+        let data = try JSONEncoder().encode(user)
+        let object = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        #expect(object?.keys.contains("phone") == false)
+    }
+
     @Test func idVerificationSubmissionEncodesSlotKeyedUploads() throws {
         let submission = IDVerificationSubmission(
             documentType: "drivers-license",
