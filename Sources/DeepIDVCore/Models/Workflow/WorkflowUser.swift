@@ -9,7 +9,9 @@ public struct WorkflowUser: Sendable, Equatable, Encodable {
     public let email: String
     public let firstName: String
     public let lastName: String
-    public let phone: String
+    /// Optional E.164 phone number. Required when the workflow includes a
+    /// phone verification step. Omitted from the request body when `nil`.
+    public let phone: String?
     /// Optional host-side correlation id (`external_id`).
     public let externalID: String?
 
@@ -25,7 +27,7 @@ public struct WorkflowUser: Sendable, Equatable, Encodable {
         email: String,
         firstName: String,
         lastName: String,
-        phone: String,
+        phone: String? = nil,
         externalID: String? = nil
     ) {
         self.email = email

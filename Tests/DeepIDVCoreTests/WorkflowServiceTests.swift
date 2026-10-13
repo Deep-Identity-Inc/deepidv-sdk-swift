@@ -140,6 +140,22 @@ private func makeService(
     #expect(session.steps.count == 1)
 }
 
+@Test func createSessionOmitsPhoneWhenNil() async throws {
+    let (service, stub) = makeService { request in
+        (createSessionBody, makeResponse(url: request.url!.absoluteString, status: 200))
+    }
+
+    let user = WorkflowUser(email: "user@example.com", firstName: "Ada", lastName: "Lovelace")
+    _ = try await service.createSession(workflowID: "wf-1", user: user, expiresInHours: nil)
+
+    let request = try #require(await stub.recorder.requests.first)
+    let json =
+        try JSONSerialization.jsonObject(with: try #require(request.httpBody))
+        as? [String: Any]
+    #expect(json?["email"] as? String == "user@example.com")
+    #expect(json?.keys.contains("phone") == false)
+}
+
 @Test func fetchStateBuildsPathAndDecodes() async throws {
     let (service, stub) = makeService { request in
         (stateBody, makeResponse(url: request.url!.absoluteString, status: 200))

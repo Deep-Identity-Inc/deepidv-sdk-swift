@@ -97,7 +97,7 @@ private struct CreateWorkflowSessionRequest: Encodable {
     let email: String
     let firstName: String
     let lastName: String
-    let phone: String
+    let phone: String?
     let externalID: String?
     let expiresInHours: Int?
 

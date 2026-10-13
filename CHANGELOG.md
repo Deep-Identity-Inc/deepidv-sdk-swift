@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- `WorkflowUser.phone` is now optional (`String?`), and `phone` defaults to
+  `nil` in `WorkflowUser.init`, matching
+  `POST /v1/workflows/{workflow_id}/sessions`. A `nil` phone is left out of
+  the request body. Workflows with a phone verification step still need a
+  phone. Code that reads `user.phone` now gets a `String?`.
+
 ## [1.2.0] - 2026-10-06
 
 Reverify flow api now accepts the applicants email.
