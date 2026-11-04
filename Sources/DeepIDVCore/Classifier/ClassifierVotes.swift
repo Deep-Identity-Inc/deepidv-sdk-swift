@@ -1,7 +1,7 @@
 // DeepIDVCore › Classifier
 
 /// How a document type came to be confirmed.
-enum TypeSource: String, Sendable, Equatable {
+package enum TypeSource: String, Sendable, Equatable {
     /// The classifier named it on consecutive frames.
     case api
     /// Our vote over its ranked guesses confirmed it: a best guess.
@@ -10,13 +10,13 @@ enum TypeSource: String, Sendable, Equatable {
 
 /// How far a confirmed type is trusted. `strong` and `margin` are specific;
 /// `weak` is trusted only as far as its kind.
-enum TypeStrength: String, Sendable, Equatable {
+package enum TypeStrength: String, Sendable, Equatable {
     case strong
     case margin
     case weak
 
     /// For ranking a sticky document: higher is more trusted.
-    var rank: Int {
+    package var rank: Int {
         switch self {
         case .weak: return 0
         case .margin: return 1
@@ -27,12 +27,12 @@ enum TypeStrength: String, Sendable, Equatable {
 
 /// One frame in the vote window: its best guess, that guess's confidence and its
 /// margin over the second guess.
-struct VoteEntry: Sendable, Equatable {
-    var id: String?
-    var confidence: Double
-    var margin: Double
+package struct VoteEntry: Sendable, Equatable {
+    package var id: String?
+    package var confidence: Double
+    package var margin: Double
 
-    init(_ id: String?, _ confidence: Double, margin: Double = 0) {
+    package init(_ id: String?, _ confidence: Double, margin: Double = 0) {
         self.id = id
         self.confidence = confidence
         self.margin = margin
@@ -40,16 +40,16 @@ struct VoteEntry: Sendable, Equatable {
 }
 
 /// A type that a frame or the vote window points at.
-struct ScanDoc: Sendable, Equatable {
-    var id: String?
-    var confidence: Double
+package struct ScanDoc: Sendable, Equatable {
+    package var id: String?
+    package var confidence: Double
     /// Set when the vote confirmed it: how many frames agreed.
-    var votes: Int?
+    package var votes: Int?
 }
 
 /// What one classifier answer means for one frame, before the scan policy.
-struct ScanDecision: Sendable, Equatable {
-    enum Key: Sendable, Equatable {
+package struct ScanDecision: Sendable, Equatable {
+    package enum Key: Sendable, Equatable {
         /// The call failed.
         case error
         /// No card in the frame.
@@ -62,15 +62,15 @@ struct ScanDecision: Sendable, Equatable {
         case classified
     }
 
-    var key: Key
-    var source: TypeSource?
-    var strength: TypeStrength?
-    var answer: DetectAnswer?
-    var doc: ScanDoc?
+    package var key: Key
+    package var source: TypeSource?
+    package var strength: TypeStrength?
+    package var answer: DetectAnswer?
+    package var doc: ScanDoc?
     /// The best guess, when the classifier named no type.
-    var top: DetectAnswer.Candidate?
+    package var top: DetectAnswer.Candidate?
 
-    init(
+    package init(
         _ key: Key, source: TypeSource? = nil, strength: TypeStrength? = nil,
         answer: DetectAnswer? = nil, doc: ScanDoc? = nil, top: DetectAnswer.Candidate? = nil
     ) {
@@ -84,15 +84,15 @@ struct ScanDecision: Sendable, Equatable {
 }
 
 /// The running memory behind `ClassifierVotes.decide`.
-struct ScanMemo: Sendable, Equatable {
+package struct ScanMemo: Sendable, Equatable {
     /// Failed calls in a row.
-    var errors = 0
+    package var errors = 0
     /// The type the classifier named on the last good frame.
-    var lastType: String?
+    package var lastType: String?
     /// How many good frames in a row named `lastType`.
-    var streak = 0
+    package var streak = 0
     /// The last `ClassifierVotes.window` good frames, oldest first.
-    var votes: [VoteEntry] = []
+    package var votes: [VoteEntry] = []
 }
 
 /// Turns one classifier answer into a per-frame decision: the classifier's own
@@ -100,45 +100,45 @@ struct ScanMemo: Sendable, Equatable {
 ///
 /// Ported from the web capture with the same rules and numbers, which were
 /// tuned on real scans.
-enum ClassifierVotes {
+package enum ClassifierVotes {
     /// Frames in a row that must name the same type before it counts as confirmed.
-    static let confirmStreak = 2
+    package static let confirmStreak = 2
     /// The vote window: a type is confirmed when it is the best guess on
     /// `need` of the last `window` good frames, each at its floor or more.
-    static let window = 5
-    static let need = 3
+    package static let window = 5
+    package static let need = 3
     /// The vote floor for a health card, which the health-card block is tuned on.
-    static let healthFloor = 0.2
+    package static let healthFloor = 0.2
     /// The vote floor for every other card. An upright card mostly scores well
     /// above this; a card turned upside down mostly scores below it for some
     /// wrong class.
-    static let namedFloor = 0.5
+    package static let namedFloor = 0.5
 
     /// A strong vote: the same id leads at least this many frames of the window,
     /// with at least this mean confidence and mean margin over the second guess.
-    static let strongVotes = 4
-    static let strongMeanConfidence = 0.25
-    static let strongMeanMargin = 0.15
+    package static let strongVotes = 4
+    package static let strongMeanConfidence = 0.25
+    package static let strongMeanMargin = 0.15
 
     /// A margin vote, just below a strong one: a known class, never a health card.
-    static let marginVotes = 4
-    static let marginMeanConfidence = 0.2
-    static let marginMeanMargin = 0.15
+    package static let marginVotes = 4
+    package static let marginMeanConfidence = 0.2
+    package static let marginMeanMargin = 0.15
 
     /// The confidence a frame's best guess `id` needs to vote.
-    static func floor(for id: String) -> Double {
+    package static func floor(for id: String) -> Double {
         DocumentClassCatalog.isHealthCard(id) ? healthFloor : namedFloor
     }
 
     /// Frames in the window whose best guess is `id` at its floor or more.
-    static func agreeing(_ votes: [VoteEntry], id: String, floor: Double? = nil) -> Int {
+    package static func agreeing(_ votes: [VoteEntry], id: String, floor: Double? = nil) -> Int {
         let floor = floor ?? self.floor(for: id)
         return votes.filter { $0.id == id && $0.confidence >= floor }.count
     }
 
     /// How strong a vote for `id` is, over every frame that put it first (at any
     /// confidence).
-    static func strength(_ votes: [VoteEntry], id: String) -> TypeStrength {
+    package static func strength(_ votes: [VoteEntry], id: String) -> TypeStrength {
         let agree = votes.filter { $0.id == id }
         guard !agree.isEmpty else { return .weak }
         let count = Double(agree.count)
@@ -158,7 +158,7 @@ enum ClassifierVotes {
 
     /// The type the window confirms, or `nil`. Each frame votes at its id's floor
     /// unless `floor` is given; `allow` decides which ids may be confirmed.
-    static func tally(
+    package static func tally(
         _ votes: [VoteEntry], need: Int = need, floor: Double? = nil,
         allow: (String) -> Bool
     ) -> ScanDoc? {
@@ -188,7 +188,7 @@ enum ClassifierVotes {
     ///     check. A frame that didn't neither extends a streak nor votes.
     ///   - allow: whether the vote may confirm a given id (see
     ///     `ClassifierScanPolicy.voteAllows`).
-    static func decide(
+    package static func decide(
         _ outcome: DetectOutcome, frameGood: Bool, memo: inout ScanMemo,
         allow: (String) -> Bool
     ) -> ScanDecision {

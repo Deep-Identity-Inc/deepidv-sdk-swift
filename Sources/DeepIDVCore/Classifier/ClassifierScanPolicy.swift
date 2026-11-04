@@ -9,19 +9,19 @@ import Foundation
 /// clock), so the rules are deterministic under test. Ported from the web
 /// capture with the same rules and numbers. Only card fronts are scanned: card
 /// backs and passports never reach the classifier.
-struct ClassifierScanPolicy: Sendable {
+package struct ClassifierScanPolicy: Sendable {
     /// A well-framed card the classifier can't type is captured anyway once it has
     /// been good this long (plus `holdDuration`).
-    static let untypedCaptureDelay: TimeInterval = 5
+    package static let untypedCaptureDelay: TimeInterval = 5
     /// How long a capture is held, with the card staying good and the same type
     /// leading, before the photo is taken.
-    static let holdDuration: TimeInterval = 1.2
+    package static let holdDuration: TimeInterval = 1.2
     /// Failed calls in a row after which the classifier is switched off for the
     /// rest of the capture.
-    static let fallbackAfter = 3
+    package static let fallbackAfter = 3
 
     /// Why the photo is being taken.
-    enum CaptureReason: String, Sendable, Equatable {
+    package enum CaptureReason: String, Sendable, Equatable {
         case typed
         case voted
         case untyped
@@ -29,39 +29,39 @@ struct ClassifierScanPolicy: Sendable {
 
     /// A capture waiting out `holdDuration`: for which type (`nil` when untyped),
     /// why, and since when.
-    struct Hold: Sendable, Equatable {
-        var key: String?
-        var reason: CaptureReason
-        var since: TimeInterval
+    package struct Hold: Sendable, Equatable {
+        package var key: String?
+        package var reason: CaptureReason
+        package var since: TimeInterval
     }
 
     /// The document the scan names, and how far it is trusted.
-    struct ShownDoc: Sendable, Equatable {
-        var id: String
-        var source: TypeSource
-        var strength: TypeStrength
+    package struct ShownDoc: Sendable, Equatable {
+        package var id: String
+        package var source: TypeSource
+        package var strength: TypeStrength
 
         /// The classifier's own type above a strong vote above a margin vote above
         /// a weak one.
-        var rank: Int { source == .api ? 3 : strength.rank }
+        package var rank: Int { source == .api ? 3 : strength.rank }
     }
 
-    struct State: Sendable, Equatable {
+    package struct State: Sendable, Equatable {
         /// Failed calls in a row.
-        var failures = 0
+        package var failures = 0
         /// Since when the card has been good enough to photograph, or `nil`.
-        var goodSince: TimeInterval?
+        package var goodSince: TimeInterval?
         /// The sticky document: kept from its first confirmation until the card
         /// leaves the frame or fewer than `ClassifierVotes.need` of the recent
         /// frames still put it first. For the same id it only moves up in trust,
         /// so the name doesn't flicker between specific and general.
-        var doc: ShownDoc?
+        package var doc: ShownDoc?
         /// The capture being held, or `nil`.
-        var hold: Hold?
+        package var hold: Hold?
     }
 
     /// What the guidance shows for one answer.
-    enum Shown: Sendable, Equatable {
+    package enum Shown: Sendable, Equatable {
         case error
         case noID
         case quality
@@ -74,55 +74,57 @@ struct ClassifierScanPolicy: Sendable {
     }
 
     /// The document chip: confirmed (`pending == false`) or a first guess.
-    struct Chip: Sendable, Equatable {
-        var doc: ShownDoc
-        var pending: Bool
+    package struct Chip: Sendable, Equatable {
+        package var doc: ShownDoc
+        package var pending: Bool
     }
 
     /// Another kind of document than the one picked, as the classifier named it.
-    struct Mismatch: Sendable, Equatable {
-        var id: String
-        var group: DocumentGroup
+    package struct Mismatch: Sendable, Equatable {
+        package var id: String
+        package var group: DocumentGroup
     }
 
-    struct Step: Sendable, Equatable {
-        var shown: Shown
-        var chip: Chip?
+    package struct Step: Sendable, Equatable {
+        package var shown: Shown
+        package var chip: Chip?
         /// Advisory: the card is still captured, as untyped.
-        var mismatch: Mismatch?
+        package var mismatch: Mismatch?
         /// The photo is due now.
-        var capture: CaptureReason?
+        package var capture: CaptureReason?
         /// Why the classifier gives up, or `nil`.
-        var fallback: String?
-        var state: State
+        package var fallback: String?
+        package var state: State
     }
 
     /// Per-capture context.
-    struct Context: Sendable, Equatable {
+    package struct Context: Sendable, Equatable {
         /// The group the user picked, or `nil`.
-        var picked: DocumentGroup?
-        var health: HealthPolicy
-        var now: TimeInterval
+        package var picked: DocumentGroup?
+        package var health: HealthPolicy
+        package var now: TimeInterval
         /// The vote window after this answer: keeps or drops the sticky document.
-        var votes: [VoteEntry] = []
+        package var votes: [VoteEntry] = []
         /// The card looks upside down: no hold and no capture until that clears.
-        var wrongWay = false
+        package var wrongWay = false
     }
 
     // MARK: Running the scan
 
     /// The group the user picked.
-    let picked: DocumentGroup?
-    let health: HealthPolicy
-    private(set) var memo = ScanMemo()
-    private(set) var state = State()
+    package let picked: DocumentGroup?
+    package let health: HealthPolicy
+    package private(set) var memo = ScanMemo()
+    package private(set) var state = State()
+    /// The latest answer's decision, or `nil` before the first.
+    package private(set) var lastDecision: ScanDecision?
 
-    init(picked: DocumentGroup?, health: HealthPolicy) {
+    package init(picked: DocumentGroup?, health: HealthPolicy) {
         self.picked = picked
         self.health = health
     }
 
-    init(documentType: DocumentType) {
+    package init(documentType: DocumentType) {
         self.init(
             picked: DocumentClassCatalog.group(for: documentType),
             health: DocumentClassCatalog.healthPolicy(for: documentType))
@@ -134,7 +136,7 @@ struct ClassifierScanPolicy: Sendable {
     ///   - frameGood: whether the frame that was sent passed the on-device quality
     ///     check.
     ///   - wrongWay: whether the upside-down check is holding capture.
-    mutating func step(
+    package mutating func step(
         _ outcome: DetectOutcome, frameGood: Bool, now: TimeInterval, wrongWay: Bool = false
     ) -> Step {
         let picked = self.picked
@@ -146,16 +148,17 @@ struct ClassifierScanPolicy: Sendable {
             picked: picked, health: health, now: now, votes: memo.votes, wrongWay: wrongWay)
         let step = Self.step(state, decision: decision, outcome: outcome, context: context)
         state = step.state
+        lastDecision = decision
         return step
     }
 
     /// The photo is due at `now`: the hold has run its full length.
-    func captureDue(at now: TimeInterval) -> CaptureReason? {
+    package func captureDue(at now: TimeInterval) -> CaptureReason? {
         Self.holdDue(state, now: now)
     }
 
     /// The confirmed classification of the latest decision, for the submission.
-    func confirmed(_ decision: ScanDecision, captureRotation: Int = 0) -> Confirmed? {
+    package func confirmed(_ decision: ScanDecision, captureRotation: Int = 0) -> Confirmed? {
         Self.confirmed(decision, memo: memo, shown: state.doc, captureRotation: captureRotation)
     }
 
@@ -163,13 +166,15 @@ struct ClassifierScanPolicy: Sendable {
 
     /// Whether the vote may confirm `id`: a class of the picked group, or a health
     /// card under the strict policy whatever was picked.
-    static func voteAllows(_ id: String, health: HealthPolicy, picked: DocumentGroup?) -> Bool {
+    package static func voteAllows(_ id: String, health: HealthPolicy, picked: DocumentGroup?)
+        -> Bool
+    {
         if DocumentClassCatalog.isHealthCard(id) { return health == .strict }
         guard let picked else { return false }
         return DocumentClassCatalog.group(of: id) == picked
     }
 
-    enum HealthVerdict: Sendable, Equatable {
+    package enum HealthVerdict: Sendable, Equatable {
         /// Never photographed automatically; the warning shows.
         case blocked
         /// Auto-capture waits on "Checking your ID…".
@@ -178,7 +183,7 @@ struct ClassifierScanPolicy: Sendable {
 
     /// What a sticky health card means: blocked when the classifier named it, or
     /// (strict only) on a strong vote; suspected on a weaker vote.
-    static func healthVerdict(_ doc: ShownDoc?, health: HealthPolicy) -> HealthVerdict? {
+    package static func healthVerdict(_ doc: ShownDoc?, health: HealthPolicy) -> HealthVerdict? {
         guard let doc, DocumentClassCatalog.isHealthCard(doc.id) else { return nil }
         if doc.source == .api { return .blocked }
         guard health == .strict else { return nil }
@@ -187,7 +192,7 @@ struct ClassifierScanPolicy: Sendable {
 
     /// Whether a health card is the window's best guess, at any confidence: no
     /// other id leads more of its frames (a tie counts as leading).
-    static func healthLeads(_ votes: [VoteEntry]) -> Bool {
+    package static func healthLeads(_ votes: [VoteEntry]) -> Bool {
         var counts: [String: Int] = [:]
         for case let id? in votes.map(\.id) { counts[id, default: 0] += 1 }
         var health = 0
@@ -203,13 +208,13 @@ struct ClassifierScanPolicy: Sendable {
     }
 
     /// The photo is due: a hold has lasted `holdDuration`.
-    static func holdDue(_ state: State, now: TimeInterval) -> CaptureReason? {
+    package static func holdDue(_ state: State, now: TimeInterval) -> CaptureReason? {
         guard let hold = state.hold, reached(now - hold.since, holdDuration) else { return nil }
         return hold.reason
     }
 
     /// One answer, decided, to what the scan shows and does.
-    static func step(
+    package static func step(
         _ previous: State, decision: ScanDecision, outcome: DetectOutcome, context: Context
     ) -> Step {
         var step = stepOf(previous, decision: decision, outcome: outcome, context: context)
@@ -233,7 +238,8 @@ struct ClassifierScanPolicy: Sendable {
         }
         var state = state
         state.hold = nil
-        return Step(shown: shown, chip: chip, mismatch: nil, capture: nil, fallback: nil, state: state)
+        return Step(
+            shown: shown, chip: chip, mismatch: nil, capture: nil, fallback: nil, state: state)
     }
 
     /// The sticky document after this answer.
@@ -312,7 +318,8 @@ struct ClassifierScanPolicy: Sendable {
 
         let goodSince = previous.goodSince ?? context.now
         if key == .classified, let docID {
-            let confirmed = ShownDoc(id: docID, source: source, strength: decision.strength ?? .weak)
+            let confirmed = ShownDoc(
+                id: docID, source: source, strength: decision.strength ?? .weak)
             let doc = nextDoc(previous.doc, confirmed: confirmed, decision: decision, votes: votes)
             let state = State(failures: 0, goodSince: goodSince, doc: doc)
             switch healthVerdict(doc, health: context.health) {
@@ -374,23 +381,23 @@ struct ClassifierScanPolicy: Sendable {
 
 extension ClassifierScanPolicy {
     /// The confirmed document a decision names, as sent with the photo.
-    struct Confirmed: Sendable, Equatable {
-        var id: String
-        var confidence: Double
-        var kind: DocumentClassKind?
-        var group: DocumentGroup?
-        var source: TypeSource
-        var strength: TypeStrength
-        var top3: [DetectAnswer.Candidate]
-        var votes: Int
-        var modelVersion: String?
+    package struct Confirmed: Sendable, Equatable {
+        package var id: String
+        package var confidence: Double
+        package var kind: DocumentClassKind?
+        package var group: DocumentGroup?
+        package var source: TypeSource
+        package var strength: TypeStrength
+        package var top3: [DetectAnswer.Candidate]
+        package var votes: Int
+        package var modelVersion: String?
         /// How the frames were turned before they were sent: 0 or 180.
-        var captureRotation: Int
+        package var captureRotation: Int
     }
 
     /// The confirmed document `decision` names. The sticky `shown` document's trust
     /// wins for the same id, because that is what the user was shown.
-    static func confirmed(
+    package static func confirmed(
         _ decision: ScanDecision, memo: ScanMemo, shown: ShownDoc?, captureRotation: Int = 0
     ) -> Confirmed? {
         guard let doc = decision.doc, let id = doc.id else { return nil }

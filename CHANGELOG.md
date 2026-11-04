@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- ID card capture in workflow sessions uses deepidv's document classifier
+  when it's available, and falls back to on-device checks otherwise. It
+  recognises the card, waits while a card is held upside down, and never
+  auto-captures a health card (the shutter still works). Frames go to the
+  same API host as the rest of the session.
+  `DeepIDVConfig.usesDocumentClassifier` (default `true`) turns it off.
+
 ### Changed
 
 ## [1.2.1] - 2026-10-13

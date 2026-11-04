@@ -156,6 +156,11 @@ public struct DeepIDVClient: Sendable {
         SessionUploader(config: config, transport: transport)
     }
 
+    /// The document classifier client for one workflow session.
+    func makeDetectClient(sessionID: String) -> DetectClient {
+        DetectClient(config: config, transport: transport, sessionID: sessionID)
+    }
+
     // MARK: - iGaming checks
 
     /// Runs the iGaming anti-cheat face check (`POST /v1/igaming/anti-cheat`):

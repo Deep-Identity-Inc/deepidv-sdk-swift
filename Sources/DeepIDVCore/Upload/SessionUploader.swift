@@ -38,7 +38,7 @@ public struct SessionUploader: Sendable {
 
     /// Uploads extra frames of the fronts, under their own upload types. Internal:
     /// they never appear among the public slots.
-    func uploadExtraFrames(
+    package func uploadExtraFrames(
         sessionID: String, files: [ExtraFrameSlot: FileInput]
     ) async throws -> [ExtraFrameSlot: String] {
         try await upload(sessionID: sessionID, files: files, uploadType: \.rawValue)

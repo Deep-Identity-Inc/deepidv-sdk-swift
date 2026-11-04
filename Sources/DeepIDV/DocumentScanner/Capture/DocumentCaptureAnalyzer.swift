@@ -184,7 +184,8 @@ struct VisionDocumentFrameEvaluator: DocumentFrameEvaluating {
             aspectRatio: aspectRatio,
             sharpness: sharpness,
             glareRatio: glareRatio,
-            center: CGPoint(x: box.midX, y: box.midY))
+            center: CGPoint(x: box.midX, y: box.midY),
+            boundingBox: box)
     }
 
     /// Runs segmentation, falling back to rectangle detection. Shared by the
@@ -251,7 +252,7 @@ struct VisionDocumentFrameEvaluator: DocumentFrameEvaluating {
     /// sharpness and near-white glare fraction. Assumes a 32-bit BGRA buffer
     /// (the format the live ``AVFoundationCameraController`` requests); other
     /// formats yield zeroed metrics, which simply keep auto-capture from firing.
-    private static func sharpnessAndGlare(
+    static func sharpnessAndGlare(
         in pixelBuffer: CVPixelBuffer, boundingBox: CGRect
     ) -> (sharpness: Double, glareRatio: Double) {
         guard CVPixelBufferGetPixelFormatType(pixelBuffer) == kCVPixelFormatType_32BGRA else {

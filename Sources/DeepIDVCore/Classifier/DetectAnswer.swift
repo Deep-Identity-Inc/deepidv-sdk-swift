@@ -1,26 +1,26 @@
 // DeepIDVCore › Classifier
 
 /// One answer from the document classifier for one frame.
-struct DetectAnswer: Sendable, Equatable, Decodable {
+package struct DetectAnswer: Sendable, Equatable, Decodable {
     /// The card's bounding box in the pixels of the image that was sent.
-    struct Box: Sendable, Equatable, Decodable {
+    package struct Box: Sendable, Equatable, Decodable {
         /// `[x0, y0, x1, y1]`.
-        var xyxy: [Double]
-        var score: Double?
+        package var xyxy: [Double]
+        package var score: Double?
     }
 
     /// One ranked guess at the document class. On the wire it is a pair:
     /// `["class_id", 0.81]`.
-    struct Candidate: Sendable, Equatable, Decodable {
-        var id: String
-        var confidence: Double
+    package struct Candidate: Sendable, Equatable, Decodable {
+        package var id: String
+        package var confidence: Double
 
-        init(id: String, confidence: Double) {
+        package init(id: String, confidence: Double) {
             self.id = id
             self.confidence = confidence
         }
 
-        init(from decoder: any Decoder) throws {
+        package init(from decoder: any Decoder) throws {
             var pair = try decoder.unkeyedContainer()
             id = try pair.decode(String.self)
             confidence = try pair.decode(Double.self)
@@ -28,24 +28,24 @@ struct DetectAnswer: Sendable, Equatable, Decodable {
     }
 
     /// The classifier's view of which document this is.
-    struct DocumentTypeGuess: Sendable, Equatable, Decodable {
+    package struct DocumentTypeGuess: Sendable, Equatable, Decodable {
         /// The class the classifier names, or `nil` when it isn't sure enough to.
-        var id: String?
-        var confidence: Double
+        package var id: String?
+        package var confidence: Double
         /// Up to three guesses, best first. Present even when `id` is `nil`.
-        var top3: [Candidate]
+        package var top3: [Candidate]
 
-        enum CodingKeys: String, CodingKey {
+        package enum CodingKeys: String, CodingKey {
             case id, confidence, top3
         }
 
-        init(id: String?, confidence: Double, top3: [Candidate] = []) {
+        package init(id: String?, confidence: Double, top3: [Candidate] = []) {
             self.id = id
             self.confidence = confidence
             self.top3 = top3
         }
 
-        init(from decoder: any Decoder) throws {
+        package init(from decoder: any Decoder) throws {
             let container = try decoder.container(keyedBy: CodingKeys.self)
             id = try container.decodeIfPresent(String.self, forKey: .id)
             confidence = try container.decodeIfPresent(Double.self, forKey: .confidence) ?? 0
@@ -54,18 +54,18 @@ struct DetectAnswer: Sendable, Equatable, Decodable {
     }
 
     /// Whether a card is in the frame at all.
-    var present: Bool
-    var box: Box?
-    var documentType: DocumentTypeGuess?
-    var modelVersion: String?
+    package var present: Bool
+    package var box: Box?
+    package var documentType: DocumentTypeGuess?
+    package var modelVersion: String?
 
-    enum CodingKeys: String, CodingKey {
+    package enum CodingKeys: String, CodingKey {
         case present, box
         case documentType = "document_type"
         case modelVersion = "model_version"
     }
 
-    init(
+    package init(
         present: Bool, box: Box? = nil, documentType: DocumentTypeGuess? = nil,
         modelVersion: String? = nil
     ) {
@@ -76,16 +76,16 @@ struct DetectAnswer: Sendable, Equatable, Decodable {
     }
 
     /// The best guess, if any.
-    var top: Candidate? { documentType?.top3.first }
+    package var top: Candidate? { documentType?.top3.first }
 }
 
 /// What came back for one frame: an answer, or the HTTP status of a failed call.
-enum DetectOutcome: Sendable, Equatable {
+package enum DetectOutcome: Sendable, Equatable {
     case answer(DetectAnswer)
     /// A failed call. `status` is `0` for a network error or timeout.
     case failure(status: Int)
 
-    var answer: DetectAnswer? {
+    package var answer: DetectAnswer? {
         if case .answer(let answer) = self { return answer }
         return nil
     }

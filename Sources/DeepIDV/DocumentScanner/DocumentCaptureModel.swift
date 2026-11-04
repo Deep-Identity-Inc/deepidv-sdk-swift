@@ -67,6 +67,12 @@ final class DocumentCaptureModel<Output>: ObservableObject {
     private let tunables: DocumentCaptureTunables
     private let complete: CompleteOperation
     private let onResult: (Result<Output, DeepIDVError>) -> Void
+    /// The document classifier for card fronts, or `nil` for on-device checks only.
+    private let classifier: (any DocumentClassifying)?
+    /// Told about every front photo, with what the classifier made of it.
+    private let onFrontCaptured: ((FrontCaptureReport) -> Void)?
+    /// The classifier's clock (seconds, monotonic).
+    private let clock: () -> TimeInterval
 
     // MARK: - Internal state
 
@@ -74,6 +80,8 @@ final class DocumentCaptureModel<Output>: ObservableObject {
     private var isCancelled = false
     private var hasFinished = false
     private var manualRequested = false
+    /// Whether the side just captured was taken with the manual shutter.
+    private var lastCaptureWasManual = false
     private var manualShutterTask: Task<Void, Never>?
     /// Whether the back side is armed for auto-capture (after the flip grace).
     private var backArmed = false
@@ -95,6 +103,9 @@ final class DocumentCaptureModel<Output>: ObservableObject {
         encoder: any DocumentStillEncoding,
         authorizer: any CameraAuthorizing = AlwaysAuthorizedCamera(),
         tunables: DocumentCaptureTunables = .init(),
+        classifier: (any DocumentClassifying)? = nil,
+        onFrontCaptured: ((FrontCaptureReport) -> Void)? = nil,
+        clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
         complete: @escaping CompleteOperation,
         onResult: @escaping (Result<Output, DeepIDVError>) -> Void
     ) {
@@ -108,6 +119,9 @@ final class DocumentCaptureModel<Output>: ObservableObject {
         self.analyzer = DocumentCaptureAnalyzer(documentType: documentType, tunables: tunables)
         self.complete = complete
         self.onResult = onResult
+        self.classifier = classifier
+        self.onFrontCaptured = onFrontCaptured
+        self.clock = clock
     }
 
     // MARK: - Lifecycle
@@ -138,6 +152,7 @@ final class DocumentCaptureModel<Output>: ObservableObject {
         guard !hasFinished else { return }
         isCancelled = true
         cancelManualShutterTimer()
+        classifier?.stop()
         controller.stop()
         finish(.failure(.cancelled("Document scanning was cancelled.")))
     }
@@ -197,7 +212,9 @@ final class DocumentCaptureModel<Output>: ObservableObject {
                 continue
             }
 
-            if !shouldCapture(frame) { continue }
+            // The classifier only looks at card fronts: backs and passports skip it.
+            let sideClassifier = capturingBack || documentType == .passport ? nil : classifier
+            if !shouldCapture(frame, classifier: sideClassifier) { continue }
 
             // Lock acquired — grab a full-resolution still; fall back to the
             // streamed video frame if the photo capture fails (never a regression).
@@ -209,12 +226,22 @@ final class DocumentCaptureModel<Output>: ObservableObject {
             }
             if isCancelled { return }
 
-            let input: FileInput
+            var input: FileInput
             do {
                 input = try encoder.encode(captured, documentType: documentType)
             } catch {
                 finishCaptureFailed(error, fallback: "Unable to process the captured image.")
                 return
+            }
+
+            if !capturingBack {
+                let report =
+                    await sideClassifier?.frontCaptured(
+                        photo: input, manual: lastCaptureWasManual, at: clock())
+                    ?? FrontCaptureReport(photo: input, classification: nil, extraFrames: [])
+                if isCancelled { return }
+                input = report.photo
+                onFrontCaptured?(report)
             }
 
             // Two-sided document, front just captured → flash a confirmation,
@@ -257,25 +284,71 @@ final class DocumentCaptureModel<Output>: ObservableObject {
 
     /// Whether to capture this frame — an explicit manual request wins; otherwise
     /// the analyzer's gate decides, and any guidance is published for the overlay.
-    private func shouldCapture(_ frame: CameraFrame) -> Bool {
+    ///
+    /// With a classifier in play, both must agree: the classifier's verdict holds
+    /// capture back (or blocks it, for a health card) until it is satisfied, and
+    /// the on-device gates must then pass on every frame for the classifier hold.
+    /// When the classifier is off, the on-device logic runs exactly as without it.
+    private func shouldCapture(
+        _ frame: CameraFrame, classifier: (any DocumentClassifying)?
+    ) -> Bool {
         if manualRequested {
             manualRequested = false
+            lastCaptureWasManual = true
             log.debug("manual capture requested")
             return true
         }
+        lastCaptureWasManual = false
         let quality = evaluator.quality(of: frame, for: documentType)
         lastQuality = quality
-        switch analyzer.evaluate(quality) {
+        let decision = analyzer.evaluate(quality)
+        if let classifier {
+            let now = clock()
+            classifier.observe(frame, quality: quality, visionReady: decision == .capture, at: now)
+            switch classifier.verdict(at: now) {
+            case .off:
+                break
+            case .block(let blocking):
+                resetDwell()
+                guidance = blocking
+                return false
+            case .hold(let waiting):
+                resetDwell()
+                // The on-device hints come first: they're the ones the user can act on.
+                if case .guide(let hint) = decision {
+                    guidance = hint
+                } else {
+                    guidance = waiting
+                }
+                return false
+            case .go:
+                return dwell(decision, quality, duration: tunables.classifierHoldDuration)
+            }
+        }
+        return dwell(decision, quality, duration: tunables.holdStillDuration)
+    }
+
+    private func resetDwell() {
+        steadyStartedAt = nil
+        holdProgress = 0
+    }
+
+    /// The hold-still dwell: capture once the gates have passed on every frame for
+    /// `duration`.
+    private func dwell(
+        _ decision: CaptureDecision, _ quality: CaptureQuality, duration: TimeInterval
+    ) -> Bool {
+        switch decision {
         case .capture:
             // The document is well-positioned and still right now. Require the user
-            // to hold it there for `holdStillDuration` before firing — the elapsed
+            // to hold it there for `duration` before firing — the elapsed
             // time drives the overlay's progress ring (a deliberate "hold still").
             let start = steadyStartedAt ?? Date()
             steadyStartedAt = start
             let elapsed = Date().timeIntervalSince(start)
-            holdProgress = min(1, elapsed / max(0.001, tunables.holdStillDuration))
+            holdProgress = min(1, elapsed / max(0.001, duration))
             guidance = .holdSteady
-            if elapsed >= tunables.holdStillDuration {
+            if elapsed >= duration {
                 log.debug("auto-capture after hold — \(Self.describe(quality), privacy: .public)")
                 return true
             }
@@ -357,6 +430,7 @@ final class DocumentCaptureModel<Output>: ObservableObject {
         guard !hasFinished else { return }
         hasFinished = true
         holdProgress = 0
+        classifier?.stop()
         cancelManualShutterTimer()
         backArmTask?.cancel()
         onResult(result)

@@ -33,6 +33,11 @@ public struct DeepIDVConfig: Sendable, Equatable {
     /// before opening the camera. Defaults to `true`; kiosks that give their
     /// own instructions can turn it off to go straight to the viewfinder.
     public var showsDocumentCaptureIntro: Bool
+    /// Whether ID card capture in workflow sessions uses deepidv's document
+    /// classifier when it's available, to recognise the card, catch one held
+    /// upside down and hold off on health cards. Defaults to `true`. With it off,
+    /// or when the classifier isn't available, capture uses on-device checks only.
+    public var usesDocumentClassifier: Bool
 
     public init(
         apiKey: String,
@@ -42,7 +47,8 @@ public struct DeepIDVConfig: Sendable, Equatable {
         initialRetryDelay: TimeInterval? = nil,
         uploadTimeout: TimeInterval? = nil,
         documentCamera: DocumentCamera = .back,
-        showsDocumentCaptureIntro: Bool = true
+        showsDocumentCaptureIntro: Bool = true,
+        usesDocumentClassifier: Bool = true
     ) {
         self.apiKey = apiKey
         self.baseURL = baseURL ?? Self.defaultBaseURL
@@ -52,6 +58,7 @@ public struct DeepIDVConfig: Sendable, Equatable {
         self.uploadTimeout = uploadTimeout ?? Self.defaultUploadTimeout
         self.documentCamera = documentCamera
         self.showsDocumentCaptureIntro = showsDocumentCaptureIntro
+        self.usesDocumentClassifier = usesDocumentClassifier
     }
 }
 

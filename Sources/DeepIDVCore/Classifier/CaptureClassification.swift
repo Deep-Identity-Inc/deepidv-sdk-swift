@@ -3,13 +3,13 @@ import Foundation
 // DeepIDVCore › Classifier
 
 /// Which of a session's documents a capture belongs to.
-enum DocumentTier: String, Sendable, Equatable, CaseIterable {
+package enum DocumentTier: String, Sendable, Equatable, CaseIterable {
     case primary
     case secondary
     case tertiary
 
     /// The upload slot of this tier's front photo.
-    var frontSlot: SessionUploadSlot {
+    package var frontSlot: SessionUploadSlot {
         switch self {
         case .primary: return .idFront
         case .secondary: return .secondaryIDFront
@@ -20,13 +20,13 @@ enum DocumentTier: String, Sendable, Equatable, CaseIterable {
 
 /// How far the confirmed type was trusted: the classifier's own, or our vote by
 /// its strength.
-enum CaptureTrust: String, Sendable, Equatable, Encodable {
+package enum CaptureTrust: String, Sendable, Equatable, Encodable {
     case api
     case strongVote = "strong_vote"
     case marginVote = "margin_vote"
     case weakVote = "weak_vote"
 
-    init(source: TypeSource, strength: TypeStrength) {
+    package init(source: TypeSource, strength: TypeStrength) {
         switch (source, strength) {
         case (.api, _): self = .api
         case (.vote, .strong): self = .strongVote
@@ -37,7 +37,7 @@ enum CaptureTrust: String, Sendable, Equatable, Encodable {
 }
 
 /// How the photo was taken.
-enum CaptureTrigger: String, Sendable, Equatable, Encodable {
+package enum CaptureTrigger: String, Sendable, Equatable, Encodable {
     case auto
     case manual
 }
@@ -46,28 +46,28 @@ enum CaptureTrigger: String, Sendable, Equatable, Encodable {
 
 /// One frame the classifier judged, for review only (never shown). Every field
 /// is sent, `null` when it has no value.
-struct FrameDiagnostic: Sendable, Equatable, Encodable {
+package struct FrameDiagnostic: Sendable, Equatable, Encodable {
     /// The decision name logged for an upside-down probe.
-    static let probeDecision = "wrong_way_probe"
+    package static let probeDecision = "wrong_way_probe"
 
     /// Milliseconds into the scan.
-    var t: Int
+    package var t: Int
     /// Degrees the frame was turned before it was sent.
-    var rot: Int
-    var top1: String?
-    var conf: Double?
-    var margin: Double?
+    package var rot: Int
+    package var top1: String?
+    package var conf: Double?
+    package var margin: Double?
     /// The card's share of the frame, from the on-device check.
-    var area: Double?
+    package var area: Double?
     /// The card's distance from the frame edge, from the on-device check.
-    var edge: Double?
-    var decision: String
+    package var edge: Double?
+    package var decision: String
 
-    enum CodingKeys: String, CodingKey {
+    package enum CodingKeys: String, CodingKey {
         case t, rot, top1, conf, margin, area, edge, decision
     }
 
-    func encode(to encoder: any Encoder) throws {
+    package func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(t, forKey: .t)
         try container.encode(rot, forKey: .rot)
@@ -80,7 +80,7 @@ struct FrameDiagnostic: Sendable, Equatable, Encodable {
     }
 
     /// Rounds to 3 decimals, as the server stores it.
-    static func round3(_ value: Double?) -> Double? {
+    package static func round3(_ value: Double?) -> Double? {
         guard let value, value.isFinite else { return nil }
         return (value * 1000).rounded() / 1000
     }
@@ -88,7 +88,7 @@ struct FrameDiagnostic: Sendable, Equatable, Encodable {
 
 extension ScanDecision.Key {
     /// The decision name logged for this key.
-    var diagnosticName: String {
+    package var diagnosticName: String {
         switch self {
         case .error: return "error"
         case .noID: return "no_id"
@@ -101,18 +101,18 @@ extension ScanDecision.Key {
 
 /// The frames judged in one camera run, keeping the last `capacity`. A retake or
 /// the next side starts a new log.
-struct FrameLog: Sendable, Equatable {
-    static let capacity = 12
+package struct FrameLog: Sendable, Equatable {
+    package static let capacity = 12
 
-    let startedAt: TimeInterval
-    private(set) var frames: [FrameDiagnostic] = []
+    package let startedAt: TimeInterval
+    package private(set) var frames: [FrameDiagnostic] = []
 
-    init(startedAt: TimeInterval) {
+    package init(startedAt: TimeInterval) {
         self.startedAt = startedAt
     }
 
     /// Logs an answered frame. A failed call is not a judged frame.
-    mutating func add(
+    package mutating func add(
         _ decision: ScanDecision, at now: TimeInterval, rotation: Int, area: Double? = nil,
         edge: Double? = nil
     ) {
@@ -123,7 +123,7 @@ struct FrameLog: Sendable, Equatable {
     }
 
     /// Logs an answered upside-down probe.
-    mutating func addProbe(_ outcome: DetectOutcome, at now: TimeInterval, rotation: Int) {
+    package mutating func addProbe(_ outcome: DetectOutcome, at now: TimeInterval, rotation: Int) {
         guard let answer = outcome.answer else { return }
         append(
             answer: answer, at: now, rotation: rotation, area: nil, edge: nil,
@@ -154,26 +154,26 @@ struct FrameLog: Sendable, Equatable {
 // MARK: - Per tier
 
 /// What the classifier had confirmed when one tier's front was photographed.
-struct TierCaptureClassification: Sendable, Equatable, Encodable {
+package struct TierCaptureClassification: Sendable, Equatable, Encodable {
     /// Frames from the device are always upright, so there's no forced turn.
-    static let orientationMode = "none"
+    package static let orientationMode = "none"
 
-    var documentType: String
-    var trust: CaptureTrust
+    package var documentType: String
+    package var trust: CaptureTrust
     /// 0...1.
-    var confidence: Double
+    package var confidence: Double
     /// At most 3, best first.
-    var top3: [DetectAnswer.Candidate]
+    package var top3: [DetectAnswer.Candidate]
     /// 0...5: frames of the vote window that agreed.
-    var votes: Int
-    var captureMode: CaptureTrigger
-    var modelVersion: String?
+    package var votes: Int
+    package var captureMode: CaptureTrigger
+    package var modelVersion: String?
     /// 0 or 180.
-    var captureRotation: Int
+    package var captureRotation: Int
     /// The last frames judged before the photo; left out when there are none.
-    var frames: [FrameDiagnostic]
+    package var frames: [FrameDiagnostic]
 
-    init(
+    package init(
         _ confirmed: ClassifierScanPolicy.Confirmed, captureMode: CaptureTrigger,
         frames: [FrameDiagnostic] = []
     ) {
@@ -188,7 +188,7 @@ struct TierCaptureClassification: Sendable, Equatable, Encodable {
         self.frames = Array(frames.suffix(FrameLog.capacity))
     }
 
-    enum CodingKeys: String, CodingKey {
+    package enum CodingKeys: String, CodingKey {
         case documentType = "document_type"
         case trust, confidence, top3, votes
         case captureMode = "capture_mode"
@@ -202,7 +202,7 @@ struct TierCaptureClassification: Sendable, Equatable, Encodable {
         case frames
     }
 
-    func encode(to encoder: any Encoder) throws {
+    package func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(documentType, forKey: .documentType)
         try container.encode(trust, forKey: .trust)
@@ -224,7 +224,7 @@ struct TierCaptureClassification: Sendable, Equatable, Encodable {
 
 extension DetectAnswer.Candidate: Encodable {
     /// Encoded as a pair, the same as on the way in: `["class_id", 0.81]`.
-    func encode(to encoder: any Encoder) throws {
+    package func encode(to encoder: any Encoder) throws {
         var pair = encoder.unkeyedContainer()
         try pair.encode(id)
         try pair.encode(confidence)
@@ -238,28 +238,30 @@ extension DetectAnswer.Candidate: Encodable {
 /// Only fronts with a confirmed type are recorded. An untyped or mismatched
 /// front, or one taken after the classifier switched off, removes its tier, so a
 /// retake never carries a stale classification. A back leaves its tier alone.
-struct CaptureClassificationPayload: Sendable, Equatable, Encodable {
-    private(set) var tiers: [DocumentTier: TierCaptureClassification] = [:]
+package struct CaptureClassificationPayload: Sendable, Equatable, Encodable {
+    package private(set) var tiers: [DocumentTier: TierCaptureClassification] = [:]
 
-    init(tiers: [DocumentTier: TierCaptureClassification] = [:]) {
+    package init(tiers: [DocumentTier: TierCaptureClassification] = [:]) {
         self.tiers = tiers
     }
 
-    var isEmpty: Bool { tiers.isEmpty }
+    package var isEmpty: Bool { tiers.isEmpty }
 
     /// Records one tier's front capture: its classification, or `nil` for none.
-    mutating func recordFront(_ tier: DocumentTier, _ classification: TierCaptureClassification?) {
+    package mutating func recordFront(
+        _ tier: DocumentTier, _ classification: TierCaptureClassification?
+    ) {
         tiers[tier] = classification
     }
 
     /// The field to send: the tiers whose front photo is in `uploads`, or `nil`
     /// when there are none, so the field is left out.
-    func sent(with uploads: [SessionUploadSlot: String]) -> CaptureClassificationPayload? {
+    package func sent(with uploads: [SessionUploadSlot: String]) -> CaptureClassificationPayload? {
         let kept = tiers.filter { uploads[$0.key.frontSlot] != nil }
         return kept.isEmpty ? nil : CaptureClassificationPayload(tiers: kept)
     }
 
-    func encode(to encoder: any Encoder) throws {
+    package func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: StringCodingKey.self)
         for tier in DocumentTier.allCases {
             if let classification = tiers[tier] {
@@ -273,7 +275,7 @@ struct CaptureClassificationPayload: Sendable, Equatable, Encodable {
 
 /// The upload slot of one extra frame of a tier's front. Internal, so it never
 /// shows up among the public `SessionUploadSlot`s or in `uploads`.
-enum ExtraFrameSlot: String, Sendable, Equatable, Hashable, CaseIterable {
+package enum ExtraFrameSlot: String, Sendable, Equatable, Hashable, CaseIterable {
     case idFront1 = "id_front_extra_1"
     case idFront2 = "id_front_extra_2"
     case secondaryIDFront1 = "secondary_id_front_extra_1"
@@ -282,11 +284,11 @@ enum ExtraFrameSlot: String, Sendable, Equatable, Hashable, CaseIterable {
     case tertiaryIDFront2 = "tertiary_id_front_extra_2"
 
     /// The `n`th (1 or 2) extra frame of a tier's front.
-    init?(tier: DocumentTier, number: Int) {
+    package init?(tier: DocumentTier, number: Int) {
         self.init(rawValue: "\(tier.frontSlot.rawValue)_extra_\(number)")
     }
 
-    var tier: DocumentTier {
+    package var tier: DocumentTier {
         switch self {
         case .idFront1, .idFront2: return .primary
         case .secondaryIDFront1, .secondaryIDFront2: return .secondary

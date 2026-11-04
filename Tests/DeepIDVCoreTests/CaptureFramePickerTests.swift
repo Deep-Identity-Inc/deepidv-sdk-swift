@@ -20,14 +20,18 @@ private func kept(_ time: TimeInterval, _ sharpness: Double?) -> BufferedFrame<S
 
     @Test func aCardPulledAwayAtTheEndOfTheHoldKeepsTheSharpEarlyFrame() {
         // The hold runs 8.15–9.35 s; sharpness falls as the device moves.
-        let ring = [kept(8.25, 820), kept(8.5, 790), kept(8.75, 610), kept(9, 240), kept(9.25, 150)]
+        let ring = [
+            kept(8.25, 820), kept(8.5, 790), kept(8.75, 610), kept(9, 240), kept(9.25, 150),
+        ]
         let (main, extras) = CaptureFramePicker.pick(ring + [kept(9.35, 120)], now: 9.35)
         #expect(main?.time == 8.25)
         #expect(extras.map(\.time) == [8.5, 8.75])
     }
 
     @Test func aSteadyCardUsuallyPicksTheNewest() {
-        let ring = [kept(8.25, 800), kept(8.5, 805), kept(8.75, 810), kept(9, 812), kept(9.25, 815)]
+        let ring = [
+            kept(8.25, 800), kept(8.5, 805), kept(8.75, 810), kept(9, 812), kept(9.25, 815),
+        ]
         #expect(CaptureFramePicker.pick(ring + [kept(9.35, 818)], now: 9.35).main?.time == 9.35)
     }
 
@@ -39,14 +43,19 @@ private func kept(_ time: TimeInterval, _ sharpness: Double?) -> BufferedFrame<S
     }
 
     @Test func aTieOrUnscoredFramesPickTheNewest() {
-        #expect(CaptureFramePicker.pick([kept(0.1, 500), kept(0.3, 500)], now: 0.4).main?.time == 0.3)
-        #expect(CaptureFramePicker.pick([kept(0.1, nil), kept(0.3, nil)], now: 0.4).main?.time == 0.3)
+        #expect(
+            CaptureFramePicker.pick([kept(0.1, 500), kept(0.3, 500)], now: 0.4).main?.time == 0.3)
+        #expect(
+            CaptureFramePicker.pick([kept(0.1, nil), kept(0.3, nil)], now: 0.4).main?.time == 0.3)
         // A scored frame beats an unscored one.
-        #expect(CaptureFramePicker.pick([kept(0.1, 1), kept(0.3, nil)], now: 0.4).main?.time == 0.1)
+        #expect(
+            CaptureFramePicker.pick([kept(0.1, 1), kept(0.3, nil)], now: 0.4).main?.time == 0.1)
     }
 
     @Test func extrasAreNeverWithinTheGapOfThePhotoOrEachOther() {
-        let all = [kept(1, 10), kept(1.1, 9), kept(1.2, 8), kept(1.3, 7), kept(1.5, 6), kept(1.7, 5)]
+        let all = [
+            kept(1, 10), kept(1.1, 9), kept(1.2, 8), kept(1.3, 7), kept(1.5, 6), kept(1.7, 5),
+        ]
         let (main, extras) = CaptureFramePicker.pick(all, now: 1.8)
         let picked = [main!] + extras
         for (i, a) in picked.enumerated() {

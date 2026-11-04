@@ -18,13 +18,29 @@ struct IDVerificationStepFlowView: View {
         self.registerCancellation = context.registerCancellation
         self.documentCamera = context.client.config.documentCamera
         self.showsIntro = context.client.config.showsDocumentCaptureIntro
+        let usesClassifier = context.client.config.usesDocumentClassifier
         _model = StateObject(
             wrappedValue: IDVerificationStepFlowModel(
                 requirements: requirements,
+                classifier: usesClassifier
+                    ? IDVerificationStepFlowModel.ClassifierSetup(
+                        availability: ClassifierAvailability(),
+                        make: { type, availability in
+                            DocumentClassifierScanner(
+                                documentType: type,
+                                sessionID: context.sessionID,
+                                detector: context.client.makeDetectClient(
+                                    sessionID: context.sessionID),
+                                availability: availability)
+                        }) : nil,
                 upload: { files in
                     try await context.uploader.upload(
                         sessionID: context.sessionID,
                         files: files)
+                },
+                uploadExtraFrames: { files in
+                    try await context.uploader.uploadExtraFrames(
+                        sessionID: context.sessionID, files: files)
                 },
                 submit: { submission in
                     WorkflowStepOutcome(
@@ -71,6 +87,8 @@ struct IDVerificationStepFlowView: View {
                 captureMode: captureMode,
                 cameraPosition: documentCamera.avPosition,
                 showsIntro: showsIntro,
+                makeClassifier: { model.classifier(for: type) },
+                onFrontCaptured: { model.frontCaptured($0, slot: slot) },
                 complete: { front, back, _ in (front, back) },
                 onResult: { result in
                     switch result {

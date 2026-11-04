@@ -42,12 +42,16 @@ import Testing
             #expect(DocumentClassCatalog.group(of: id) == group, "\(id)")
         }
         // Every listed class has a group.
-        #expect(DocumentClassCatalog.kinds.keys.allSatisfy { DocumentClassCatalog.group(of: $0) != nil })
+        #expect(
+            DocumentClassCatalog.kinds.keys.allSatisfy { DocumentClassCatalog.group(of: $0) != nil }
+        )
     }
 
     @Test func healthCardsAreFlagged() {
         #expect(DocumentClassCatalog.isHealthCard("ca_on_hc"))
-        #expect(DocumentClassCatalog.isHealthCard("ca_bc_id"), "the Services Card replaced the health card")
+        #expect(
+            DocumentClassCatalog.isHealthCard("ca_bc_id"),
+            "the Services Card replaced the health card")
         #expect(!DocumentClassCatalog.isHealthCard("ca_bc_dl"))
         #expect(!DocumentClassCatalog.isHealthCard("ca_bc_dl_bcsc"))
         #expect(!DocumentClassCatalog.isHealthCard("ca_on_dl"))
@@ -105,7 +109,8 @@ import Testing
 
     @Test func decodesAnUnnamedTypeWithItsGuesses() throws {
         let answer = try decode(
-            #"{"present": true, "document_type": {"id": null, "confidence": 0.31, "top3": [["us_tx_dl", 0.31]]}}"#)
+            #"{"present": true, "document_type": {"id": null, "confidence": 0.31, "top3": [["us_tx_dl", 0.31]]}}"#
+        )
         #expect(answer.documentType?.id == nil)
         #expect(answer.top?.id == "us_tx_dl")
     }

@@ -64,6 +64,8 @@ struct DocumentCaptureFlowView<Output>: View {
         captureMode: CaptureMode? = nil,
         cameraPosition: AVCaptureDevice.Position = .back,
         showsIntro: Bool = true,
+        makeClassifier: (() -> (any DocumentClassifying)?)? = nil,
+        onFrontCaptured: ((FrontCaptureReport) -> Void)? = nil,
         complete: @escaping DocumentCaptureModel<Output>.CompleteOperation,
         onResult: @escaping (Result<Output, DeepIDVError>) -> Void
     ) {
@@ -78,6 +80,8 @@ struct DocumentCaptureFlowView<Output>: View {
                 evaluator: VisionDocumentFrameEvaluator(),
                 encoder: DocumentStillEncoder(),
                 authorizer: SystemCameraAuthorizer(),
+                classifier: makeClassifier?(),
+                onFrontCaptured: onFrontCaptured,
                 complete: complete,
                 onResult: onResult))
     }

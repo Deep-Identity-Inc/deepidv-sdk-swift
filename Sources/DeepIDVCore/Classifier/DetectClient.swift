@@ -11,10 +11,10 @@ import Foundation
 /// It never retries: the sampler paces calls and backs off on its own
 /// (`DetectPacing`). A failure comes back as a value, not a throw, so a broken
 /// classifier can never break capture. The only throw is cancellation.
-struct DetectClient: Sendable {
+package struct DetectClient: Sendable {
     /// Per-call timeout. A late answer is worth little, since the card has moved
     /// on, and the scan falls back to on-device checks without it.
-    static let timeout: TimeInterval = 8
+    package static let timeout: TimeInterval = 8
 
     private let client: APIClient
     private let sessionID: String
@@ -24,10 +24,15 @@ struct DetectClient: Sendable {
         self.sessionID = sessionID
     }
 
-    var path: String { "/v1/sessions/\(sessionID)/id-capture/detect" }
+    /// A client for one session, on the host and key of `config`.
+    package init(config: DeepIDVConfig, transport: HTTPTransport, sessionID: String) {
+        self.init(client: APIClient(config: config, transport: transport), sessionID: sessionID)
+    }
+
+    package var path: String { "/v1/sessions/\(sessionID)/id-capture/detect" }
 
     /// Posts one frame. Throws only `CancellationError`.
-    func detect(_ request: DetectRequest) async throws -> DetectResponse {
+    package func detect(_ request: DetectRequest) async throws -> DetectResponse {
         do {
             let answer: DetectAnswer = try await client.post(
                 path, body: request, options: RequestOptions(timeout: Self.timeout, maxRetries: 0))
@@ -44,18 +49,25 @@ struct DetectClient: Sendable {
 }
 
 /// One frame for the classifier.
-struct DetectRequest: Sendable, Equatable, Encodable {
+package struct DetectRequest: Sendable, Equatable, Encodable {
     /// The JPEG, base64-encoded, with no `data:` prefix.
-    var imageB64: String
+    package var imageB64: String
     /// Joins a capture's frames in the classifier's logs (`ScanID`).
-    var scanID: String
+    package var scanID: String
     /// The frame's number in the scan; absent on an upside-down probe, which is no
     /// frame of the scan.
-    var frame: Int?
+    package var frame: Int?
     /// The document group the user picked, when there is one.
-    var method: String?
+    package var method: String?
 
-    enum CodingKeys: String, CodingKey {
+    package init(imageB64: String, scanID: String, frame: Int? = nil, method: String? = nil) {
+        self.imageB64 = imageB64
+        self.scanID = scanID
+        self.frame = frame
+        self.method = method
+    }
+
+    package enum CodingKeys: String, CodingKey {
         case imageB64 = "image_b64"
         case scanID = "scan_id"
         case frame
@@ -64,8 +76,8 @@ struct DetectRequest: Sendable, Equatable, Encodable {
 }
 
 /// Why a classifier call failed, and what the scan should do about it.
-struct DetectFailure: Sendable, Equatable {
-    enum Reason: Sendable, Equatable {
+package struct DetectFailure: Sendable, Equatable {
+    package enum Reason: Sendable, Equatable {
         /// The classifier isn't available for this session (not enabled, unknown
         /// or finished session, bad key). Switch it off for the session, silently.
         case unavailable
@@ -77,15 +89,15 @@ struct DetectFailure: Sendable, Equatable {
     }
 
     /// The HTTP status, or `0` for a network error or timeout.
-    var status: Int
-    var reason: Reason
+    package var status: Int
+    package var reason: Reason
 
-    init(status: Int, reason: Reason) {
+    package init(status: Int, reason: Reason) {
         self.status = status
         self.reason = reason
     }
 
-    init(_ error: DeepIDVError) {
+    package init(_ error: DeepIDVError) {
         let status = error.status ?? 0
         let reason: Reason
         switch error.kind {
@@ -101,12 +113,12 @@ struct DetectFailure: Sendable, Equatable {
 }
 
 /// What came back for one frame.
-enum DetectResponse: Sendable, Equatable {
+package enum DetectResponse: Sendable, Equatable {
     case answer(DetectAnswer)
     case failure(DetectFailure)
 
     /// The form the scan rules read.
-    var outcome: DetectOutcome {
+    package var outcome: DetectOutcome {
         switch self {
         case .answer(let answer): return .answer(answer)
         case .failure(let failure): return .failure(status: failure.status)
@@ -119,23 +131,23 @@ enum DetectResponse: Sendable, Equatable {
 /// How long to wait before the next classifier call. Calls go one at a time, at
 /// least `minimumInterval` apart from start to start, with extra backoff after
 /// some failures. Pure, so the schedule is testable.
-struct DetectPacing: Sendable, Equatable {
+package struct DetectPacing: Sendable, Equatable {
     /// At most one call this often.
-    static let minimumInterval: TimeInterval = 0.5
+    package static let minimumInterval: TimeInterval = 0.5
     /// After a rate limit the backoff doubles from this…
-    static let rateLimitInitial: TimeInterval = 1
+    package static let rateLimitInitial: TimeInterval = 1
     /// …up to this.
-    static let rateLimitMax: TimeInterval = 4
+    package static let rateLimitMax: TimeInterval = 4
     /// After a network error, timeout or unavailable gateway.
-    static let retryWait: TimeInterval = 2
+    package static let retryWait: TimeInterval = 2
 
     /// The current backoff, in seconds.
-    private(set) var backoff: TimeInterval = 0
+    package private(set) var backoff: TimeInterval = 0
 
-    init() {}
+    package init() {}
 
     /// Records how the last call ended.
-    mutating func record(_ response: DetectResponse) {
+    package mutating func record(_ response: DetectResponse) {
         guard case .failure(let failure) = response else {
             backoff = 0
             return
@@ -150,7 +162,7 @@ struct DetectPacing: Sendable, Equatable {
     }
 
     /// How long to wait before the next call, given how long the last one took.
-    func wait(afterCallTaking elapsed: TimeInterval) -> TimeInterval {
+    package func wait(afterCallTaking elapsed: TimeInterval) -> TimeInterval {
         max(Self.minimumInterval - elapsed, backoff, 0)
     }
 }
@@ -160,11 +172,11 @@ struct DetectPacing: Sendable, Equatable {
 /// The tag sent with every frame of one camera run: the session id plus 6 random
 /// base36 characters, so a scan's frames can be told apart and found by session.
 /// Only letters, digits and hyphens are kept, and it is 8 to 64 characters long.
-enum ScanID {
-    static let randomLength = 6
-    static let maxLength = 64
+package enum ScanID {
+    package static let randomLength = 6
+    package static let maxLength = 64
 
-    static func make(sessionID: String, random: String = randomBase36()) -> String {
+    package static func make(sessionID: String, random: String = randomBase36()) -> String {
         let allowed = sessionID.unicodeScalars.filter {
             ("a"..."z").contains($0) || ("A"..."Z").contains($0) || ("0"..."9").contains($0)
                 || $0 == "-"
@@ -174,13 +186,13 @@ enum ScanID {
         return "\(session.isEmpty ? "scan" : String(session))-\(random)"
     }
 
-    static func randomBase36(_ count: Int = randomLength) -> String {
+    package static func randomBase36(_ count: Int = randomLength) -> String {
         let digits = Array("0123456789abcdefghijklmnopqrstuvwxyz")
         return String((0..<count).map { _ in digits.randomElement()! })
     }
 
     /// Whether a tag is one the classifier keeps.
-    static func isValid(_ id: String) -> Bool {
+    package static func isValid(_ id: String) -> Bool {
         (8...maxLength).contains(id.count)
             && id.unicodeScalars.allSatisfy {
                 ("a"..."z").contains($0) || ("A"..."Z").contains($0) || ("0"..."9").contains($0)
@@ -191,7 +203,7 @@ enum ScanID {
 
 extension DocumentGroup {
     /// The group's name on the wire, as the classifier logs it.
-    var wireValue: String {
+    package var wireValue: String {
         switch self {
         case .driversLicence: return "dl"
         case .passport: return "passport"

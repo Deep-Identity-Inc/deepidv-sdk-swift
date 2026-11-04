@@ -1,6 +1,7 @@
 // DeepIDV › DocumentScanner › Capture
 
 import CoreGraphics  // CGPoint
+import DeepIDVCore
 import Foundation  // TimeInterval
 
 /// The per-frame quality metrics the auto-capture gates are evaluated against.
@@ -46,13 +47,27 @@ struct CaptureQuality: Sendable, Equatable {
     /// no-camera test/preview path), which disables the jitter check.
     var center: CGPoint?
 
+    /// The detected document's bounding box, normalized with Vision's
+    /// bottom-left origin. `nil` when not measured. Used to crop the frame sent to
+    /// the document classifier and for its diagnostics.
+    var boundingBox: CGRect?
+
+    /// The box's share of the frame (0–1), or `nil` without a box.
+    var boxArea: Double? { boundingBox.map { Double($0.width * $0.height) } }
+
+    /// The box's distance from the nearest frame edge (normalized), or `nil`.
+    var edgeMargin: Double? {
+        boundingBox.map { Double(min($0.minX, $0.minY, 1 - $0.maxX, 1 - $0.maxY)) }
+    }
+
     init(
         documentDetected: Bool,
         fillRatio: Double = 0,
         aspectRatio: Double = 0,
         sharpness: Double = 0,
         glareRatio: Double = 0,
-        center: CGPoint? = nil
+        center: CGPoint? = nil,
+        boundingBox: CGRect? = nil
     ) {
         self.documentDetected = documentDetected
         self.fillRatio = fillRatio
@@ -60,6 +75,7 @@ struct CaptureQuality: Sendable, Equatable {
         self.sharpness = sharpness
         self.glareRatio = glareRatio
         self.center = center
+        self.boundingBox = boundingBox
     }
 }
 
@@ -117,6 +133,16 @@ struct DocumentCaptureTunables: Sendable, Equatable {
     /// beat — kept here so tests can zero it out and not wait on it.
     var sideCapturedDisplay: TimeInterval = 0.9
 
+    /// The hold before auto-capture when the document classifier is in play: the
+    /// on-device checks must pass on every frame this long once the classifier
+    /// says go. Shorter than `holdStillDuration` because the classifier has already
+    /// watched the card for a while.
+    var classifierHoldDuration: TimeInterval = 1.2
+
+    /// How long the on-device checks may pass with no classifier answer at all
+    /// before this side gives up on the classifier.
+    var classifierWaitLimit: TimeInterval = 4
+
     // The compiler-synthesized memberwise initializer is used — every stored
     // property has a default, so `.init()` and `.init(stabilityFrameCount:)` both work.
 }
@@ -138,6 +164,16 @@ enum CaptureGuidance: Sendable, Equatable {
     /// Blurry or still settling — hold steady. Covers both motion blur and the
     /// not-yet-stable window after all other gates pass.
     case holdSteady
+    /// The document classifier is still checking the card.
+    case identifying
+    /// Waiting for the document classifier's first answer.
+    case connecting
+    /// The card looks upside down.
+    case wrongWay
+    /// A health card, which can't be used as ID.
+    case healthCard
+    /// Another kind of document than the one picked.
+    case otherDocument(DocumentClassKind)
 }
 
 /// The analyzer's verdict for a frame: either take the shot, or show guidance.

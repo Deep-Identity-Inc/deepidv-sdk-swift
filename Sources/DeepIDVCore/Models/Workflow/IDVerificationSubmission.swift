@@ -29,9 +29,9 @@ public struct IDVerificationSubmission: Sendable, Equatable, Encodable {
     public let uploads: [SessionUploadSlot: String]
     /// What the document classifier confirmed for each tier's front. Internal and
     /// sent only when set, so a submission without it encodes exactly as before.
-    var captureClassification: CaptureClassificationPayload?
+    package internal(set) var captureClassification: CaptureClassificationPayload?
     /// Extra frames of the fronts, kept apart from `uploads`. Sent only when set.
-    var extraFrameUploads: [ExtraFrameSlot: String] = [:]
+    package internal(set) var extraFrameUploads: [ExtraFrameSlot: String] = [:]
 
     enum CodingKeys: String, CodingKey {
         case documentType = "document_type"
@@ -84,7 +84,7 @@ public struct IDVerificationSubmission: Sendable, Equatable, Encodable {
 
     /// This submission with the classifier's fields: the classification of the
     /// fronts being submitted, and the extra frames of those fronts.
-    func withClassifierFields(
+    package func withClassifierFields(
         _ classification: CaptureClassificationPayload?,
         extraFrames: [ExtraFrameSlot: String]
     ) -> IDVerificationSubmission {
@@ -95,13 +95,13 @@ public struct IDVerificationSubmission: Sendable, Equatable, Encodable {
     }
 
     /// Whether any classifier field would be sent.
-    var hasClassifierFields: Bool {
+    package var hasClassifierFields: Bool {
         !(captureClassification?.isEmpty ?? true) || !extraFrameUploads.isEmpty
     }
 
     /// This submission without the classifier's fields, as an older server
     /// accepts it.
-    var withoutClassifierFields: IDVerificationSubmission {
+    package var withoutClassifierFields: IDVerificationSubmission {
         var copy = self
         copy.captureClassification = nil
         copy.extraFrameUploads = [:]

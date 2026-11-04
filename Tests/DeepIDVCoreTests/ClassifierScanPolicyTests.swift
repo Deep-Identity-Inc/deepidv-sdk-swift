@@ -17,7 +17,9 @@ private func context(
 }
 
 /// A decision confirming `id`: by the classifier, or by vote when `voted`.
-private func classified(_ id: String, voted: Bool = false, strength: TypeStrength? = nil) -> ScanDecision {
+private func classified(_ id: String, voted: Bool = false, strength: TypeStrength? = nil)
+    -> ScanDecision
+{
     ScanDecision(
         .classified, source: voted ? .vote : .api, strength: strength ?? (voted ? .weak : .strong),
         answer: DetectAnswer(
@@ -35,7 +37,8 @@ private let error = ScanDecision(.error)
 private let licenceVotes = Array(repeating: VoteEntry("ca_on_dl", 0.6, margin: 0.5), count: 3)
 
 private func step(
-    _ state: Policy.State, _ decision: ScanDecision, _ context: Policy.Context, outcome: DetectOutcome = ok
+    _ state: Policy.State, _ decision: ScanDecision, _ context: Policy.Context,
+    outcome: DetectOutcome = ok
 ) -> Policy.Step {
     Policy.step(state, decision: decision, outcome: outcome, context: context)
 }
@@ -130,7 +133,9 @@ private func step(
         #expect(other.state.hold == Policy.Hold(key: "ca_ab_dl", reason: .voted, since: 0.6))
         #expect(Policy.holdDue(other.state, now: hold) == nil)
         // The leading type dropping out of the vote window cancels it too.
-        let dropped = step(start.state, steady, context(now: 0.6, votes: [VoteEntry("us_ga_dl", 0.3, margin: 0.2)]))
+        let dropped = step(
+            start.state, steady, context(now: 0.6, votes: [VoteEntry("us_ga_dl", 0.3, margin: 0.2)])
+        )
         #expect(dropped.state.hold == nil)
     }
 
@@ -184,7 +189,9 @@ private func step(
     }
 
     @Test func theMismatchIsAdvisoryAndTheUntypedCaptureStillRuns() {
-        for (picked, id) in [(DocumentGroup.driversLicence, "us_passport_book"), (.permanentResident, "ca_on_dl")] {
+        for (picked, id) in [
+            (DocumentGroup.driversLicence, "us_passport_book"), (.permanentResident, "ca_on_dl"),
+        ] {
             var state = Policy.State()
             var steps: [Policy.Step] = []
             for i in 0...14 {
@@ -210,18 +217,26 @@ private func step(
                 steps.append(s)
                 state = s.state
             }
-            #expect(steps.allSatisfy { $0.mismatch == nil && $0.shown == .identifying }, "\(picked) / \(id)")
+            #expect(
+                steps.allSatisfy { $0.mismatch == nil && $0.shown == .identifying },
+                "\(picked) / \(id)")
             #expect(steps.contains { $0.capture == .untyped }, "\(picked) / \(id)")
         }
         // Any other pair still gets the note.
-        #expect(step(Policy.State(), classified("ca_ab_id"), context(picked: .passport)).shown == .mismatch)
+        #expect(
+            step(Policy.State(), classified("ca_ab_id"), context(picked: .passport)).shown
+                == .mismatch)
     }
 
     @Test func aTypeConfirmedOnlyByVoteNeverClaimsAnotherDocument() {
-        let s = step(Policy.State(), classified("ca_on_dl", voted: true), context(picked: .passport))
+        let s = step(
+            Policy.State(), classified("ca_on_dl", voted: true), context(picked: .passport))
         #expect(s.mismatch == nil)
         #expect(s.shown == .classified)
-        #expect(s.chip == Policy.Chip(doc: .init(id: "ca_on_dl", source: .vote, strength: .weak), pending: false))
+        #expect(
+            s.chip
+                == Policy.Chip(
+                    doc: .init(id: "ca_on_dl", source: .vote, strength: .weak), pending: false))
     }
 
     // MARK: The sticky document
@@ -234,7 +249,10 @@ private func step(
                 VoteEntry("ca_on_dl", 0.6, margin: 0.5), VoteEntry("ca_on_dl", 0.55, margin: 0.5),
                 VoteEntry("us_ga_dl", 0.5, margin: 0.05), VoteEntry("ca_on_dl", 0.52, margin: 0.1),
             ]))
-        #expect(held.chip == Policy.Chip(doc: .init(id: "ca_on_dl", source: .vote, strength: .weak), pending: false))
+        #expect(
+            held.chip
+                == Policy.Chip(
+                    doc: .init(id: "ca_on_dl", source: .vote, strength: .weak), pending: false))
         let dropped = step(
             held.state, steady,
             context(votes: [
@@ -243,13 +261,17 @@ private func step(
             ]))
         #expect(dropped.chip == nil)
         // Frames under the named floor don't keep a licence, however many put it first.
-        let low = step(held.state, steady, context(votes: Array(repeating: VoteEntry("ca_on_dl", 0.45, margin: 0.4), count: 3)))
+        let low = step(
+            held.state, steady,
+            context(votes: Array(repeating: VoteEntry("ca_on_dl", 0.45, margin: 0.4), count: 3)))
         #expect(low.chip == nil)
     }
 
     @Test func theDocumentGoesWhenTheCardLeavesAndSurvivesAFailedCall() {
         let first = step(Policy.State(), classified("ca_on_dl", voted: true), context())
-        #expect(step(first.state, error, context(), outcome: .failure(status: 503)).chip?.doc.id == "ca_on_dl")
+        #expect(
+            step(first.state, error, context(), outcome: .failure(status: 503)).chip?.doc.id
+                == "ca_on_dl")
         #expect(step(first.state, noID, context()).chip == nil)
     }
 
@@ -261,29 +283,43 @@ private func step(
         #expect(again.chip?.doc.strength == .strong)
         let api = step(again.state, classified("ca_on_dl"), context())
         #expect(api.chip?.doc.source == .api)
-        #expect(step(api.state, classified("ca_on_dl", voted: true), context()).chip?.doc.source == .api)
+        #expect(
+            step(api.state, classified("ca_on_dl", voted: true), context()).chip?.doc.source == .api
+        )
     }
 
     @Test func aFirstGuessShowsAsAPendingChip() {
-        let guess = ScanDecision(.identifying, source: .api, doc: ScanDoc(id: "ca_on_dl", confidence: 0.6))
+        let guess = ScanDecision(
+            .identifying, source: .api, doc: ScanDoc(id: "ca_on_dl", confidence: 0.6))
         let s = step(Policy.State(), guess, context())
-        #expect(s.chip == Policy.Chip(doc: .init(id: "ca_on_dl", source: .api, strength: .weak), pending: true))
+        #expect(
+            s.chip
+                == Policy.Chip(
+                    doc: .init(id: "ca_on_dl", source: .api, strength: .weak), pending: true))
     }
 
     // MARK: What is sent with the photo
 
     @Test func theConfirmedClassificationCarriesKindGroupSourceVotesTop3AndModel() {
         var memo = ScanMemo()
-        memo.votes = [VoteEntry("ca_on_dl", 0.8), VoteEntry("ca_on_dl", 0.6), VoteEntry("us_ga_dl", 0.4), VoteEntry("ca_on_dl", 0.1)]
+        memo.votes = [
+            VoteEntry("ca_on_dl", 0.8), VoteEntry("ca_on_dl", 0.6), VoteEntry("us_ga_dl", 0.4),
+            VoteEntry("ca_on_dl", 0.1),
+        ]
         let confirmed = Policy.confirmed(classified("ca_on_dl"), memo: memo, shown: nil)
         #expect(
             confirmed
                 == Policy.Confirmed(
-                    id: "ca_on_dl", confidence: 0.8, kind: .driversLicence, group: .driversLicence, source: .api,
+                    id: "ca_on_dl", confidence: 0.8, kind: .driversLicence, group: .driversLicence,
+                    source: .api,
                     strength: .strong, top3: [.init(id: "ca_on_dl", confidence: 0.8)], votes: 2,
                     modelVersion: "m1", captureRotation: 0))
-        #expect(Policy.confirmed(classified("ca_on_dl", voted: true), memo: memo, shown: nil)?.source == .vote)
-        #expect(Policy.confirmed(classified("ca_on_dl"), memo: memo, shown: nil, captureRotation: 180)?.captureRotation == 180)
+        #expect(
+            Policy.confirmed(classified("ca_on_dl", voted: true), memo: memo, shown: nil)?.source
+                == .vote)
+        #expect(
+            Policy.confirmed(classified("ca_on_dl"), memo: memo, shown: nil, captureRotation: 180)?
+                .captureRotation == 180)
         #expect(Policy.confirmed(steady, memo: memo, shown: nil) == nil)
     }
 
@@ -402,7 +438,9 @@ private func times(_ n: Int, _ outcome: DetectOutcome) -> [DetectOutcome] {
         var scan = Scan(type)
         scan.run(times(12, strongHealth))
         #expect(scan.last.shown == .healthCard)
-        #expect(scan.last.state.doc == Policy.ShownDoc(id: "ca_on_hc", source: .vote, strength: .strong))
+        #expect(
+            scan.last.state.doc == Policy.ShownDoc(id: "ca_on_hc", source: .vote, strength: .strong)
+        )
         #expect(scan.steps.allSatisfy { $0.capture == nil })
     }
 
@@ -414,7 +452,8 @@ private func times(_ n: Int, _ outcome: DetectOutcome) -> [DetectOutcome] {
         #expect(scan.steps.allSatisfy { $0.capture == nil })
         #expect(scan.last.shown == .identifying)
         #expect(scan.last.chip == nil)
-        #expect(scan.last.state.doc == Policy.ShownDoc(id: "ca_on_hc", source: .vote, strength: .weak))
+        #expect(
+            scan.last.state.doc == Policy.ShownDoc(id: "ca_on_hc", source: .vote, strength: .weak))
     }
 
     @Test(arguments: [DocumentType.driversLicense, .idCard])
@@ -445,7 +484,8 @@ private func times(_ n: Int, _ outcome: DetectOutcome) -> [DetectOutcome] {
 
     @Test func theCombinedLicenceClassIsNotAHealthCardAndIsCaptured() {
         var scan = Scan(.driversLicense)
-        scan.run(times(12, card([("ca_bc_dl_bcsc", 0.9), ("ca_bc_id", 0.05)], id: "ca_bc_dl_bcsc")))
+        scan.run(
+            times(12, card([("ca_bc_dl_bcsc", 0.9), ("ca_bc_id", 0.05)], id: "ca_bc_dl_bcsc")))
         #expect(scan.steps.allSatisfy { $0.shown != .healthCard })
         #expect(scan.steps.contains { $0.capture != nil })
     }
@@ -477,7 +517,9 @@ private func times(_ n: Int, _ outcome: DetectOutcome) -> [DetectOutcome] {
         func v(_ id: String?) -> VoteEntry { VoteEntry(id, 0.1) }
         #expect(Policy.healthLeads([v("ca_on_hc"), v("ca_on_dl"), v("us_ga_dl"), v(nil)]))
         #expect(!Policy.healthLeads([v("ca_on_hc"), v("ca_on_dl"), v("ca_on_dl")]))
-        #expect(!Policy.healthLeads([v("ca_on_hc"), v("ca_qc_hc"), v("ca_on_dl"), v("ca_on_dl")]), "the best single id, not the kind's total")
+        #expect(
+            !Policy.healthLeads([v("ca_on_hc"), v("ca_qc_hc"), v("ca_on_dl"), v("ca_on_dl")]),
+            "the best single id, not the kind's total")
         #expect(!Policy.healthLeads([v(nil)]))
         #expect(!Policy.healthLeads([]))
     }
@@ -502,7 +544,8 @@ private func times(_ n: Int, _ outcome: DetectOutcome) -> [DetectOutcome] {
         let blurred = scan.policy.step(fuzzy, frameGood: false, now: 4)
         #expect(blurred.shown == .healthCard)
         #expect(blurred.capture == nil)
-        let gone = scan.policy.step(.answer(DetectAnswer(present: false)), frameGood: true, now: 4.5)
+        let gone = scan.policy.step(
+            .answer(DetectAnswer(present: false)), frameGood: true, now: 4.5)
         #expect(gone.shown == .noID)
         #expect(gone.state.doc == nil)
     }

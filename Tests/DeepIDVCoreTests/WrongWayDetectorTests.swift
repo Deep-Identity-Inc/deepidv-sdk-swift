@@ -10,7 +10,8 @@ private func frame(
     .answer(
         DetectAnswer(
             present: box, box: box ? .init(xyxy: [10, 10, 200, 300]) : nil,
-            documentType: .init(id: id, confidence: confidence, top3: [.init(id: top, confidence: confidence)])))
+            documentType: .init(
+                id: id, confidence: confidence, top3: [.init(id: top, confidence: confidence)])))
 }
 
 private let failed = DetectOutcome.failure(status: 0)
@@ -22,7 +23,9 @@ private func stuck(_ n: Int, _ confidence: Double = 0.08) -> WrongWayDetector {
     return detector
 }
 
-private func probed(_ detector: WrongWayDetector, _ outcome: DetectOutcome, at now: TimeInterval = 4) -> WrongWayDetector {
+private func probed(
+    _ detector: WrongWayDetector, _ outcome: DetectOutcome, at now: TimeInterval = 4
+) -> WrongWayDetector {
     var detector = detector
     detector.recordProbe(outcome, at: now)
     return detector
@@ -188,7 +191,9 @@ private func probed(_ detector: WrongWayDetector, _ outcome: DetectOutcome, at n
         for (n, score) in scores.enumerated() where flippedAt == nil {
             let t = Double(n) * 0.5
             let got = frame(score, id: score >= 0.502 ? "us_tx_dl" : nil, top: "us_tx_dl")
-            let d = ClassifierVotes.decide(got, frameGood: true, memo: &memo) { $0.hasSuffix("_dl") }
+            let d = ClassifierVotes.decide(got, frameGood: true, memo: &memo) {
+                $0.hasSuffix("_dl")
+            }
             #expect(d.key != .classified, "frame \(n) confirmed the wrong class")
             s.recordFrame(got, at: t, confirmed: false)
             if s.probeDue(at: t) {
@@ -201,7 +206,10 @@ private func probed(_ detector: WrongWayDetector, _ outcome: DetectOutcome, at n
     }
 
     @Test func answersAboutASecondApartStillFlipWellBeforeTheUntypedHold() {
-        let answers: [(TimeInterval, Double)] = [(4.017, 0.25), (4.832, 0.222), (5.831, 0.232), (7.266, 0.214), (8.29, 0.151), (10.136, 0.327)]
+        let answers: [(TimeInterval, Double)] = [
+            (4.017, 0.25), (4.832, 0.222), (5.831, 0.232), (7.266, 0.214), (8.29, 0.151),
+            (10.136, 0.327),
+        ]
         var s = WrongWayDetector()
         var flippedAt: TimeInterval?
         for (t, score) in answers {

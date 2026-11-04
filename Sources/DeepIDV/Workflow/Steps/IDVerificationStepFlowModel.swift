@@ -25,6 +25,15 @@ enum IDVerificationDocumentSlot: Sendable, Equatable, Hashable {
         }
     }
 
+    /// The tier the classifier reports this document under.
+    var tier: DocumentTier {
+        switch self {
+        case .primary: return .primary
+        case .secondary: return .secondary
+        case .tertiary: return .tertiary
+        }
+    }
+
     var backUploadSlot: SessionUploadSlot {
         switch self {
         case .primary: return .idBack
@@ -123,6 +132,15 @@ final class IDVerificationStepFlowModel: ObservableObject {
         (_ files: [SessionUploadSlot: FileInput]) async throws -> [SessionUploadSlot: String]
     typealias SubmitOperation =
         (_ submission: IDVerificationSubmission) async throws -> WorkflowStepOutcome
+    typealias ExtraFrameUploadOperation =
+        (_ files: [ExtraFrameSlot: FileInput]) async throws -> [ExtraFrameSlot: String]
+
+    /// The document classifier for this step: whether it works in this session,
+    /// and how to build one for a card front.
+    struct ClassifierSetup {
+        let availability: ClassifierAvailability
+        let make: @MainActor (DocumentType, ClassifierAvailability) -> any DocumentClassifying
+    }
 
     @Published private(set) var phase: Phase = .selectingType(index: 0)
 
@@ -132,7 +150,9 @@ final class IDVerificationStepFlowModel: ObservableObject {
 
     private let frontOnlyDocumentTypes: Set<String>
     private let upload: UploadOperation
+    private let uploadExtraFrames: ExtraFrameUploadOperation
     private let submit: SubmitOperation
+    private let classifierSetup: ClassifierSetup?
     private let onStepCompleted: (WorkflowStepOutcome) -> Void
     private let onStepFailed: (DeepIDVError) -> Void
 
@@ -141,7 +161,15 @@ final class IDVerificationStepFlowModel: ObservableObject {
         let wireType: String
         let front: FileInput
         let back: FileInput?
+        /// What the classifier confirmed on the front, if anything.
+        let classification: TierCaptureClassification?
+        let extraFrames: [FileInput]
     }
+
+    /// The report of the front just photographed, until its capture completes.
+    private var frontReports: [IDVerificationDocumentSlot: FrontCaptureReport] = [:]
+    /// Extra-frame upload keys, kept with the document keys for a selfie-only retry.
+    private var extraFrameKeys: [ExtraFrameSlot: String] = [:]
 
     private var selections: [IDVerificationDocumentSlot: WorkflowDocumentTypeOption] = [:]
     private var captures: [IDVerificationDocumentSlot: Capture] = [:]
@@ -157,7 +185,9 @@ final class IDVerificationStepFlowModel: ObservableObject {
 
     init(
         requirements: IDVerificationRequirements,
+        classifier: ClassifierSetup? = nil,
         upload: @escaping UploadOperation,
+        uploadExtraFrames: @escaping ExtraFrameUploadOperation = { _ in [:] },
         submit: @escaping SubmitOperation,
         onStepCompleted: @escaping (WorkflowStepOutcome) -> Void,
         onStepFailed: @escaping (DeepIDVError) -> Void
@@ -173,7 +203,9 @@ final class IDVerificationStepFlowModel: ObservableObject {
                 WorkflowDocumentTypeOption.normalized))
         self.faceFrontPhotoOnly = requirements.face.faceFrontPhotoOnly
         self.upload = upload
+        self.uploadExtraFrames = uploadExtraFrames
         self.submit = submit
+        self.classifierSetup = classifier
         self.onStepCompleted = onStepCompleted
         self.onStepFailed = onStepFailed
     }
@@ -203,6 +235,20 @@ final class IDVerificationStepFlowModel: ObservableObject {
         phase = capturePhase(slot: slot, option: option)
     }
 
+    /// A classifier for a card front of `type`, or `nil` (passports, or the
+    /// classifier is off or unavailable for this session).
+    func classifier(for type: DocumentType) -> (any DocumentClassifying)? {
+        guard let classifierSetup, type != .passport,
+            classifierSetup.availability.state != .unavailable
+        else { return nil }
+        return classifierSetup.make(type, classifierSetup.availability)
+    }
+
+    /// The front of the document being captured was photographed.
+    func frontCaptured(_ report: FrontCaptureReport, slot: IDVerificationDocumentSlot) {
+        frontReports[slot] = report
+    }
+
     func documentCaptured(front: FileInput, back: FileInput?) {
         guard !hasCompleted,
             case .capturingDocument(let slot, _, let captureMode) = phase,
@@ -214,11 +260,14 @@ final class IDVerificationStepFlowModel: ObservableObject {
             return
         }
 
+        let report = frontReports.removeValue(forKey: slot)
         captures[slot] = Capture(
             documentType: option.documentType,
             wireType: option.wireValue,
             front: front,
-            back: back)
+            back: back,
+            classification: report?.classification,
+            extraFrames: report?.extraFrames ?? [])
 
         guard let index = slots.firstIndex(of: slot) else { return }
         let nextIndex = index + 1
@@ -280,6 +329,7 @@ final class IDVerificationStepFlowModel: ObservableObject {
                 captures[slot] = nil
             }
             documentUploadKeys.removeAll()
+            extraFrameKeys.removeAll()
             phase = .selectingType(index: index)
 
         case .retakeDocument:
@@ -292,6 +342,7 @@ final class IDVerificationStepFlowModel: ObservableObject {
                 captures[slot] = nil
             }
             documentUploadKeys.removeAll()
+            extraFrameKeys.removeAll()
             phase = capturePhase(slot: slots[index], option: option)
 
         default:
@@ -311,7 +362,9 @@ final class IDVerificationStepFlowModel: ObservableObject {
     private func restart() {
         selections.removeAll()
         captures.removeAll()
+        frontReports.removeAll()
         documentUploadKeys.removeAll()
+        extraFrameKeys.removeAll()
         phase = .selectingType(index: 0)
     }
 
@@ -347,6 +400,19 @@ final class IDVerificationStepFlowModel: ObservableObject {
         }
 
         let reusedKeys = reusesDocumentUploads ? documentUploadKeys : [:]
+        let reusedExtraKeys = reusesDocumentUploads ? extraFrameKeys : [:]
+        var extraFiles: [ExtraFrameSlot: FileInput] = [:]
+        if reusedKeys.isEmpty, sendsClassifierFields,
+            classifierSetup?.availability.sendsExtraFrames == true
+        {
+            for slot in slots {
+                for (offset, frame) in (captures[slot]?.extraFrames ?? []).enumerated() {
+                    if let key = ExtraFrameSlot(tier: slot.tier, number: offset + 1) {
+                        extraFiles[key] = frame
+                    }
+                }
+            }
+        }
         var files: [SessionUploadSlot: FileInput] = [.selfieFront: selfie]
         if reusedKeys.isEmpty {
             for slot in slots {
@@ -369,8 +435,16 @@ final class IDVerificationStepFlowModel: ObservableObject {
                 guard !Task.isCancelled, !self.hasCompleted else { return }
                 let keys = reusedKeys.merging(uploaded) { _, new in new }
                 self.documentUploadKeys = keys.filter { $0.key != .selfieFront }
-                let submission = try self.makeSubmission(uploadKeys: keys)
-                let outcome = try await self.submit(submission)
+                // Extra frames are a bonus: failing to upload them never fails the step.
+                var extraKeys = reusedExtraKeys
+                if !extraFiles.isEmpty, let uploaded = try? await self.uploadExtraFrames(extraFiles)
+                {
+                    extraKeys = uploaded
+                }
+                guard !Task.isCancelled, !self.hasCompleted else { return }
+                self.extraFrameKeys = extraKeys
+                let submission = try self.makeSubmission(uploadKeys: keys, extraKeys: extraKeys)
+                let outcome = try await self.submitOnce(submission)
                 guard !Task.isCancelled, !self.hasCompleted else { return }
                 self.submissionAttempts += 1
                 self.handle(outcome.recordingAttempts(self.submissionAttempts))
@@ -389,17 +463,45 @@ final class IDVerificationStepFlowModel: ObservableObject {
         }
     }
 
+    /// Whether the classifier's fields go with the submission: only once a call
+    /// succeeded in this session, because a server that answers the classifier
+    /// route also accepts its fields.
+    private var sendsClassifierFields: Bool {
+        classifierSetup?.availability.state == .available
+    }
+
     private func makeSubmission(
-        uploadKeys: [SessionUploadSlot: String]
+        uploadKeys: [SessionUploadSlot: String],
+        extraKeys: [ExtraFrameSlot: String] = [:]
     ) throws -> IDVerificationSubmission {
         guard let primary = captures[.primary]?.wireType else {
             throw DeepIDVError.validation("The primary document type is missing.")
         }
-        return IDVerificationSubmission(
+        let submission = IDVerificationSubmission(
             documentType: primary,
             secondaryDocumentType: captures[.secondary]?.wireType,
             tertiaryDocumentType: captures[.tertiary]?.wireType,
             uploads: uploadKeys)
+        guard sendsClassifierFields else { return submission }
+        var classification = CaptureClassificationPayload()
+        for slot in slots {
+            classification.recordFront(slot.tier, captures[slot]?.classification)
+        }
+        return submission.withClassifierFields(classification, extraFrames: extraKeys)
+    }
+
+    /// Submits, and if a server that doesn't know the classifier's fields
+    /// rejects them, submits once more without them.
+    private func submitOnce(
+        _ submission: IDVerificationSubmission
+    ) async throws -> WorkflowStepOutcome {
+        do {
+            return try await submit(submission)
+        } catch let error as DeepIDVError
+            where error.kind == .validation && submission.hasClassifierFields
+        {
+            return try await submit(submission.withoutClassifierFields)
+        }
     }
 
     private func handle(_ outcome: WorkflowStepOutcome) {
