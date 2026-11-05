@@ -43,9 +43,17 @@ final class DocumentCaptureModel<Output>: ObservableObject {
 
     // MARK: - Published state (drives the overlay)
 
-    @Published private(set) var phase: Phase = .capturingFront
+    @Published private(set) var phase: Phase = .capturingFront {
+        didSet { refreshStage() }
+    }
     /// The live guidance hint for the current frame, or `nil` once a side locks.
-    @Published private(set) var guidance: CaptureGuidance?
+    @Published private(set) var guidance: CaptureGuidance? {
+        didSet { refreshStage() }
+    }
+    /// The one instruction on screen. It follows `guidance` and the phase, but a
+    /// new stage only replaces the shown one once it has held for a moment, so a
+    /// reading that changes frame to frame doesn't flash (``CaptureStagePresenter``).
+    @Published private(set) var stage: CaptureStage = .findDocument
     /// Whether the manual shutter should be offered (auto-capture timed out).
     @Published private(set) var manualShutterVisible = false
     /// Set when camera access is denied — the view shows a Settings deep-link CTA.
@@ -54,7 +62,9 @@ final class DocumentCaptureModel<Output>: ObservableObject {
     @Published private(set) var holdProgress: Double = 0
     /// Set briefly after a side locks so the overlay can flash a success
     /// checkmark before the flow advances (to the back, or to processing).
-    @Published private(set) var showSideCaptured = false
+    @Published private(set) var showSideCaptured = false {
+        didSet { refreshStage() }
+    }
 
     // MARK: - Dependencies
 
@@ -103,6 +113,7 @@ final class DocumentCaptureModel<Output>: ObservableObject {
     private var documentSeenOnSide = false
     /// When the manual shutter is due to show.
     private var shutterDeadline: Date?
+    private var stagePresenter = CaptureStagePresenter()
 
     /// Capture diagnostics. Filter the Xcode console / Console.app by this
     /// subsystem (`com.deepidv.sdk`) to see why auto-capture is or isn't locking.
@@ -200,6 +211,21 @@ final class DocumentCaptureModel<Output>: ObservableObject {
         case .capturingBack: return "Back of your ID"
         case .processing: return nil
         }
+    }
+
+    // MARK: - Stage
+
+    /// The stage the capture is in right now, before settling.
+    private var currentStage: CaptureStage {
+        if phase == .processing { return .processing }
+        if showSideCaptured { return .captured }
+        if phase == .capturingBack, !backArmed { return .flip }
+        return guidance.map(CaptureStage.init) ?? .findDocument
+    }
+
+    private func refreshStage() {
+        let next = stagePresenter.update(currentStage, at: clock())
+        if next != stage { stage = next }
     }
 
     // MARK: - Capture loop

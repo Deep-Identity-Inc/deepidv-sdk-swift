@@ -373,14 +373,17 @@ private func run(
 
 @Test func everyClassifierGuidanceHasCopy() {
     #expect(CaptureOverlayView.hintText(for: .identifying) == "Checking your ID…")
-    #expect(CaptureOverlayView.hintText(for: .wrongWay) == "Turn your card the right way up")
+    #expect(
+        CaptureOverlayView.hintText(for: .wrongWay)
+            == "Your card is upside down. Turn it the right way up")
     #expect(
         CaptureOverlayView.hintText(for: .healthCard)
             == "Health cards can't be used. Please use a different ID.")
     #expect(
         CaptureOverlayView.hintText(for: .otherDocument(.idCard))
             == "This looks like an ID card. Is this the right document?")
-    #expect(CaptureOverlayView.hintText(for: .connecting) == "Getting ready…")
+    // Waiting for the first answer reads the same as checking: one stage, not two.
+    #expect(CaptureOverlayView.hintText(for: .connecting) == "Checking your ID…")
 }
 
 @Test func theClassifierCropGrowsTheBoxAndFallsBackToTheMiddle() {

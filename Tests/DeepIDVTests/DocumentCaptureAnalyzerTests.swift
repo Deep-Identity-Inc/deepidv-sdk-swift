@@ -87,6 +87,26 @@ private func passingQuality(at center: CGPoint) -> CaptureQuality {
     #expect(analyzer.assess(passingQuality(for: .passport)) == nil)
 }
 
+@Test func aCardHeldSidewaysIsAskedToTurnBeforeMovingCloser() {
+    // Sideways, a card spans less of the frame's width, so it also reads as far away.
+    for type in [DocumentType.idCard, .driversLicense] {
+        let analyzer = DocumentCaptureAnalyzer(documentType: type)
+        var sideways = passingQuality(for: type)
+        sideways.isPortrait = true
+        sideways.fillRatio = 0.23
+        #expect(analyzer.assess(sideways) == .turnToLandscape)
+        #expect(!analyzer.isFramed(sideways))
+    }
+}
+
+@Test func anUprightPassportBookletIsNeverAskedToTurn() {
+    let analyzer = DocumentCaptureAnalyzer(documentType: .passport)
+    var booklet = passingQuality(for: .passport)
+    booklet.isPortrait = true
+    #expect(analyzer.assess(booklet) == nil)
+    #expect(analyzer.isFramed(booklet))
+}
+
 @Test func anOpenPassportBookletIsFramedButNotForACard() {
     // What Vision measured around an open booklet on an iPad front camera.
     let passport = DocumentCaptureAnalyzer(documentType: .passport)

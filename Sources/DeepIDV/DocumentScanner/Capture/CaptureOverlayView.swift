@@ -2,6 +2,7 @@
 
 import DeepIDVCore
 import SwiftUI
+import UIKit
 
 /// The camera overlay drawn on top of the live preview: the dimmed scrim
 /// with a cut-out document guide, the side pill (front / back), the live
@@ -16,7 +17,8 @@ struct CaptureOverlayView: View {
     @Environment(\.theme) private var theme
 
     let instruction: String
-    let guidance: CaptureGuidance?
+    /// The one instruction on screen (see ``CaptureStage``).
+    let stage: CaptureStage
     let manualShutterVisible: Bool
     let isProcessing: Bool
     let permissionDenied: Bool
@@ -58,8 +60,8 @@ struct CaptureOverlayView: View {
                             sidePill(sideLabel)
                                 .position(x: geo.size.width / 2, y: guide.minY - theme.spacing.xl)
                         }
-                        if let guidance {
-                            hint(for: guidance)
+                        if let text = stage.defaultText {
+                            hint(text)
                                 .position(x: geo.size.width / 2, y: guide.maxY + theme.spacing.lg)
                         }
                     } else if sideCaptured {
@@ -77,6 +79,7 @@ struct CaptureOverlayView: View {
                 }
             }
             .ignoresSafeArea()
+            .onChange(of: stage) { Self.announce($0) }
 
             // Chrome (cancel up top, manual shutter at the bottom) is shown only
             // over the live camera — the takeover states own the whole screen.
@@ -148,14 +151,31 @@ struct CaptureOverlayView: View {
             .shadow(color: theme.colors.grey.s900.opacity(0.25), radius: 8, y: 2)
     }
 
-    private func hint(for guidance: CaptureGuidance) -> some View {
-        Text(Self.hintText(for: guidance))
+    private func hint(_ text: String) -> some View {
+        Text(text)
+            .multilineTextAlignment(.center)
             .font(theme.typography.body())
             .foregroundStyle(theme.colors.grey.s50)
             .padding(.horizontal, theme.spacing.md)
             .padding(.vertical, theme.spacing.sm)
             .background(theme.colors.grey.s900.opacity(0.6))
             .clipShape(Capsule())
+            .padding(.horizontal, theme.spacing.lg)
+            .accessibilityAddTraits(.updatesFrequently)
+    }
+
+    /// Tells VoiceOver about a new stage, with a haptic when a side is captured or
+    /// the document is the wrong one.
+    private static func announce(_ stage: CaptureStage) {
+        if stage == .captured {
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
+            UIAccessibility.post(notification: .announcement, argument: "Captured")
+        } else if let text = stage.defaultText {
+            if stage.isProblem {
+                UINotificationFeedbackGenerator().notificationOccurred(.warning)
+            }
+            UIAccessibility.post(notification: .announcement, argument: text)
+        }
     }
 
     /// The per-side success checkmark (a primary ring around a primary tick).
@@ -256,32 +276,9 @@ struct CaptureOverlayView: View {
 
     // MARK: - Hint mapping
 
-    /// Maps an analyzer ``CaptureGuidance`` to its user-facing instruction.
+    /// The instruction a live guidance hint shows.
     static func hintText(for guidance: CaptureGuidance) -> String {
-        switch guidance {
-        case .searching: return "Point the camera at your document"
-        case .moveCloser: return "Move closer"
-        case .fitDocumentInFrame: return "Fit your document in the frame"
-        case .reduceGlare: return "Reduce glare"
-        case .holdSteady: return "Hold steady"
-        case .identifying: return "Checking your ID…"
-        case .connecting: return "Getting ready…"
-        case .wrongWay: return "Turn your card the right way up"
-        case .healthCard: return "Health cards can't be used. Please use a different ID."
-        case .otherDocument(let kind):
-            return "This looks like \(kindLabel(kind)). Is this the right document?"
-        }
-    }
-
-    /// A document kind in a sentence: "a driver's licence", "an ID card".
-    static func kindLabel(_ kind: DocumentClassKind) -> String {
-        switch kind {
-        case .driversLicence: return "a driver's licence"
-        case .idCard: return "an ID card"
-        case .healthCard: return "a health card"
-        case .federal: return "a government ID"
-        case .passport: return "a passport"
-        }
+        CaptureStage(guidance).defaultText ?? ""
     }
 }
 

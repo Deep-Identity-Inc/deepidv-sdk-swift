@@ -100,7 +100,7 @@ struct DocumentCaptureFlowView<Output>: View {
                 .ignoresSafeArea()
                 CaptureOverlayView(
                     instruction: model.instructionText,
-                    guidance: model.guidance,
+                    stage: model.stage,
                     manualShutterVisible: model.manualShutterVisible,
                     isProcessing: model.phase == .processing,
                     permissionDenied: model.permissionDenied,

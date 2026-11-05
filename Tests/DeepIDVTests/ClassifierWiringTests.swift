@@ -276,6 +276,15 @@ private func makeCapture(
     #expect(spy.reports.count == 1)
 }
 
+@MainActor @Test func theScreenEndsOnTheProcessingStage() async {
+    let spy = CaptureSpy()
+    let model = makeCapture(
+        type: .passport, qualities: [page, page], classifier: FakeClassifier(.go), spy: spy)
+    #expect(model.stage == .findDocument)
+    await model.run()
+    #expect(model.stage == .processing)
+}
+
 @MainActor @Test func anOpenBookletIsFramedForAPassport() async {
     // The shape Vision measured around an open booklet on the iPad front camera.
     for aspect in [1.11, 1.19, 1.24] {

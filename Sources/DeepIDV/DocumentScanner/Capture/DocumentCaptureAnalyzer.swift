@@ -51,6 +51,8 @@ struct DocumentCaptureAnalyzer: Sendable {
     /// about 50 against the 150 bar), and the photo is the sharpest frame kept.
     func assess(_ quality: CaptureQuality, checksSharpness: Bool = true) -> CaptureGuidance? {
         guard quality.documentDetected else { return .searching }
+        // Before distance: a sideways card is narrow, so it reads as too far away.
+        if isSideways(quality) { return .turnToLandscape }
         if quality.fillRatio < tunables.minFillRatio { return .moveCloser }
         if !aspectMatches(quality.aspectRatio) { return .fitDocumentInFrame }
         if quality.glareRatio > tunables.maxGlareRatio { return .reduceGlare }
@@ -62,7 +64,8 @@ struct DocumentCaptureAnalyzer: Sendable {
     /// free of glare. Sharpness and steadiness are left out: the classifier reads a
     /// card that is a little soft or still moving, and the capture hold checks both.
     func isFramed(_ quality: CaptureQuality) -> Bool {
-        quality.documentDetected && quality.fillRatio >= tunables.minFillRatio
+        quality.documentDetected && !isSideways(quality)
+            && quality.fillRatio >= tunables.minFillRatio
             && aspectMatches(quality.aspectRatio) && quality.glareRatio <= tunables.maxGlareRatio
     }
 
@@ -99,6 +102,12 @@ struct DocumentCaptureAnalyzer: Sendable {
             return .capture
         }
         return .guide(.holdSteady)
+    }
+
+    /// A card held with its long side up and down. Not for a passport: the open
+    /// booklet is often taller than it is wide, and only its page is read.
+    private func isSideways(_ quality: CaptureQuality) -> Bool {
+        quality.isPortrait && documentType != .passport
     }
 
     /// Euclidean distance between two normalized points.
@@ -193,8 +202,11 @@ struct VisionDocumentFrameEvaluator: DocumentFrameEvaluating {
 
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
-        let aspectRatio = Self.aspectRatio(
+        let (horizontal, vertical) = Self.edgeLengths(
             of: observation, pixelWidth: width, pixelHeight: height)
+        let aspectRatio =
+            horizontal > 0 && vertical > 0
+            ? max(horizontal, vertical) / min(horizontal, vertical) : 0
 
         let (sharpness, glareRatio) = Self.sharpnessAndGlare(
             in: pixelBuffer, boundingBox: box)
@@ -206,7 +218,8 @@ struct VisionDocumentFrameEvaluator: DocumentFrameEvaluating {
             sharpness: sharpness,
             glareRatio: glareRatio,
             center: CGPoint(x: box.midX, y: box.midY),
-            boundingBox: box)
+            boundingBox: box,
+            isPortrait: vertical > horizontal * Self.portraitMargin)
     }
 
     /// Runs segmentation, falling back to rectangle detection. Shared by the
@@ -241,12 +254,16 @@ struct VisionDocumentFrameEvaluator: DocumentFrameEvaluating {
             bottomLeft: o.bottomLeft, bottomRight: o.bottomRight)
     }
 
-    /// Long-side ÷ short-side of the observed quad, in pixel space (normalized
-    /// corners scaled by the buffer dimensions so the ratio isn't distorted by a
-    /// non-square frame).
-    private static func aspectRatio(
+    /// How much taller than wide a quad must be to count as held sideways, so a
+    /// squarish or tilted quad doesn't flicker between the two.
+    static let portraitMargin = 1.15
+
+    /// The observed quad's mean horizontal and vertical edge lengths, in pixel
+    /// space (normalized corners scaled by the buffer dimensions so the shape
+    /// isn't distorted by a non-square frame).
+    private static func edgeLengths(
         of observation: VNRectangleObservation, pixelWidth: Int, pixelHeight: Int
-    ) -> Double {
+    ) -> (horizontal: Double, vertical: Double) {
         let w = Double(pixelWidth)
         let h = Double(pixelHeight)
         func point(_ p: CGPoint) -> (Double, Double) { (Double(p.x) * w, Double(p.y) * h) }
@@ -263,10 +280,7 @@ struct VisionDocumentFrameEvaluator: DocumentFrameEvaluating {
         let leftEdge = distance(tl, bl)
         let rightEdge = distance(tr, br)
 
-        let horizontal = (topEdge + bottomEdge) / 2
-        let vertical = (leftEdge + rightEdge) / 2
-        guard horizontal > 0, vertical > 0 else { return 0 }
-        return max(horizontal, vertical) / min(horizontal, vertical)
+        return ((topEdge + bottomEdge) / 2, (leftEdge + rightEdge) / 2)
     }
 
     /// Strided BGRA pass over the document's bounding box: Laplacian-variance

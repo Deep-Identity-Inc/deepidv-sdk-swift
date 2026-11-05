@@ -24,7 +24,7 @@ import Testing
     _ = DocumentTypePicker { _ in }
     _ = CaptureOverlayView(
         instruction: "Scan the front of your document",
-        guidance: .holdSteady, manualShutterVisible: true,
+        stage: .holdStill, manualShutterVisible: true,
         isProcessing: false, permissionDenied: false)
     _ = DocumentScannerView(client: client, documentType: .passport) { _ in }
     #expect(DocumentTypePicker.pickableTypes.count == 3)

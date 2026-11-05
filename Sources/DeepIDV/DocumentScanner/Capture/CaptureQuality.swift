@@ -52,6 +52,10 @@ struct CaptureQuality: Sendable, Equatable {
     /// the document classifier and for its diagnostics.
     var boundingBox: CGRect?
 
+    /// Whether the document's long side runs up and down the frame: a card held
+    /// sideways. `false` when not measured.
+    var isPortrait: Bool
+
     /// The box's share of the frame (0–1), or `nil` without a box.
     var boxArea: Double? { boundingBox.map { Double($0.width * $0.height) } }
 
@@ -67,7 +71,8 @@ struct CaptureQuality: Sendable, Equatable {
         sharpness: Double = 0,
         glareRatio: Double = 0,
         center: CGPoint? = nil,
-        boundingBox: CGRect? = nil
+        boundingBox: CGRect? = nil,
+        isPortrait: Bool = false
     ) {
         self.documentDetected = documentDetected
         self.fillRatio = fillRatio
@@ -76,6 +81,7 @@ struct CaptureQuality: Sendable, Equatable {
         self.glareRatio = glareRatio
         self.center = center
         self.boundingBox = boundingBox
+        self.isPortrait = isPortrait
     }
 }
 
@@ -177,6 +183,8 @@ struct DocumentCaptureTunables: Sendable, Equatable {
 enum CaptureGuidance: Sendable, Equatable {
     /// No document detected — ask the user to bring one into view.
     case searching
+    /// A card held sideways: its long side runs up and down.
+    case turnToLandscape
     /// Document detected but too small — move the camera closer.
     case moveCloser
     /// Wrong shape for the selected type — fit the whole document squarely in frame.
