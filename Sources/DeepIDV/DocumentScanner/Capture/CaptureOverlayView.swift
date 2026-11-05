@@ -28,12 +28,12 @@ struct CaptureOverlayView: View {
     var sideCaptured: Bool = false
     /// 0–1 fill of the capture progress ring on the guide (the hold-still dwell, D8).
     var holdProgress: Double = 0
+    /// Width ÷ height of the guide cut-out: the 1.586∶1 ID-1 card, or the
+    /// 1.42∶1 passport photo page.
+    var guideAspect: CGFloat = 1.586
     var onManualCapture: () -> Void = {}
     var onCancel: () -> Void = {}
     var onOpenSettings: () -> Void = {}
-
-    /// The 1.586∶1 ID-1 card aspect of the guide cut-out.
-    private let guideAspect: CGFloat = 1.586
 
     /// Whether the live guide (scrim + frame + pill + hint) is on screen — i.e.
     /// none of the takeover states (permission, processing, success) is showing.
@@ -94,14 +94,23 @@ struct CaptureOverlayView: View {
     // MARK: - Geometry
 
     /// The centred guide rectangle, inset from the horizontal edges and sized to
-    /// the ID-1 card aspect. Shared by the scrim cut-out and the visible frame so
-    /// they always line up.
+    /// `guideAspect`, at most `maxGuideHeight` of the screen so the pill and the
+    /// hint keep room above and below it. Shared by the scrim cut-out and the
+    /// visible frame so they always line up.
     private func guideRect(in size: CGSize) -> CGRect {
-        let width = size.width - theme.spacing.lg * 2
-        let height = width / guideAspect
+        var width = size.width - theme.spacing.lg * 2
+        var height = width / guideAspect
+        if height > size.height * Self.maxGuideHeight {
+            height = size.height * Self.maxGuideHeight
+            width = height * guideAspect
+        }
         return CGRect(
-            x: theme.spacing.lg, y: (size.height - height) / 2, width: width, height: height)
+            x: (size.width - width) / 2, y: (size.height - height) / 2, width: width,
+            height: height)
     }
+
+    /// The tallest the guide gets, as a share of the screen height.
+    static let maxGuideHeight: CGFloat = 0.7
 
     // MARK: - Sections
 

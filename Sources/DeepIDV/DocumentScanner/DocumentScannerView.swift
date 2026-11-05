@@ -107,6 +107,7 @@ struct DocumentCaptureFlowView<Output>: View {
                     sideLabel: model.sideLabel,
                     sideCaptured: model.showSideCaptured,
                     holdProgress: model.holdProgress,
+                    guideAspect: model.documentType == .passport ? 1.42 : 1.586,
                     onManualCapture: { model.triggerManualCapture() },
                     onCancel: { model.cancel() },
                     onOpenSettings: openSettings)
