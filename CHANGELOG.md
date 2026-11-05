@@ -31,8 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Every wait, result and error screen shares one design, in light and dark:
   preparing, submitting (with the ID and selfie just taken), try again, errors,
   camera access, and the liveness result.
-- A workflow run that is submitted ends on a short "You're all set" screen,
-  which closes on its own after 3 s or when tapped, then reports the result.
+- A workflow run that is submitted ends on a short thank-you screen ("We've
+  received your details"), which closes on its own after 3 s or when tapped,
+  then reports the result. It looks the same whatever the decision, so it
+  never tells the user whether they passed.
   `DeepIDVConfig.showsCompletionScreen` (default `true`) turns it off.
 - The auto-capture "close enough" check follows the frame drawn on screen, so
   a card that fills the frame is always close enough.

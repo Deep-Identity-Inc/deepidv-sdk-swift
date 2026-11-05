@@ -1026,7 +1026,7 @@ func exhaustedRunResultCarriesSessionFailure() async {
         sessionFailure: exhaustedSessionFailure)
     let spy = WorkflowResultSpy()
     let model = makeModel(session: singleIDSession(), state: failedState, resultSpy: spy)
-    // A failed session never shows "You're all set".
+    // A failed session never shows the thank-you screen.
     model.showsCompletion = true
 
     model.start()
@@ -1282,11 +1282,12 @@ func conflictDuringAResumedRunUsesTheExistingResync() async {
     #expect(spy.results.isEmpty)
 }
 
-// MARK: - "You're all set"
+// MARK: - Thank-you screen
 
 @MainActor
-private func runToSubmitted(showsCompletion: Bool, spy: WorkflowResultSpy) async
-    -> WorkflowFlowModel
+private func runToSubmitted(
+    showsCompletion: Bool, spy: WorkflowResultSpy, status: SessionStatus = .submitted
+) async -> WorkflowFlowModel
 {
     let session = WorkflowSession(
         sessionID: "sess-1", expiresAt: nil,
@@ -1298,7 +1299,7 @@ private func runToSubmitted(showsCompletion: Bool, spy: WorkflowResultSpy) async
     model.stepCompleted(
         WorkflowStepOutcome(
             stepID: .idVerification, stepStatus: .completed, failure: nil, currentStep: nil,
-            attemptsRemaining: 2, sessionStatus: .submitted, sessionProgress: .completed))
+            attemptsRemaining: 2, sessionStatus: status, sessionProgress: .completed))
     await model.awaitPendingWork()
     return model
 }
@@ -1320,6 +1321,20 @@ func aSubmittedRunShowsAllSetBeforeReporting() async {
     #expect(model.phase == .finished)
     #expect(spy.results.count == 1, "reported once")
     #expect(spy.value?.sessionID == "sess-1")
+}
+
+@MainActor @Test
+func aDeclinedRunEndsOnTheSameThankYou() async {
+    // The screen never gives the decision away; the host gets it in the result.
+    let spy = WorkflowResultSpy()
+    let model = await runToSubmitted(
+        showsCompletion: true, spy: spy, status: SessionStatus(rawValue: "DECLINED"))
+    guard case .complete = model.phase else {
+        Issue.record("expected the thank-you screen, got \(model.phase)")
+        return
+    }
+    model.completionDismissed()
+    #expect(spy.results.count == 1)
 }
 
 @MainActor @Test

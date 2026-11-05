@@ -12,7 +12,7 @@ final class WorkflowFlowModel: ObservableObject {
         case runningStep(index: Int)
         case resyncing
         case finishing
-        /// The run is submitted and the "You're all set" screen shows. The result
+        /// The run is submitted and the closing thank-you screen shows. The result
         /// is reported when that screen closes.
         case complete(WorkflowRunResult)
         case finished
@@ -437,7 +437,7 @@ final class WorkflowFlowModel: ObservableObject {
         onResult(result)
     }
 
-    /// Closes the "You're all set" screen and reports the run. Once only.
+    /// Closes the closing thank-you screen and reports the run. Once only.
     func completionDismissed() {
         guard let result = pendingResult else { return }
         pendingResult = nil
