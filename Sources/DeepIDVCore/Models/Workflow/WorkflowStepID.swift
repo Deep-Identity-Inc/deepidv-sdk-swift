@@ -37,6 +37,11 @@ public enum SessionProgress: String, Sendable, Codable, Equatable {
 
 /// Session status is an open set server-side → `RawRepresentable` struct with
 /// well-known constants. Unknown values survive decode.
+///
+/// Uses the same words as `GET /v1/sessions/{id}` and the webhooks. Some
+/// workflow responses carry the stored form of an automatic decision
+/// (`AUTO_APPROVE`, `DECLINED`); decoding reads those as ``verified`` and
+/// ``rejected``, so a session has one status wherever it is read.
 public struct SessionStatus: RawRepresentable, Hashable, Sendable, Codable {
     public let rawValue: String
 
@@ -44,10 +49,27 @@ public struct SessionStatus: RawRepresentable, Hashable, Sendable, Codable {
         self.rawValue = rawValue
     }
 
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self.init(rawValue: Self.publicForms[raw] ?? raw)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+
+    /// Stored decision values and the public status each is shown as.
+    private static let publicForms = ["AUTO_APPROVE": "VERIFIED", "DECLINED": "REJECTED"]
+
     // Prebuilt instances of the `SessionStatus` for static references
     public static let pending = SessionStatus(rawValue: "PENDING")
     public static let submitted = SessionStatus(rawValue: "SUBMITTED")
     public static let failed = SessionStatus(rawValue: "FAILED")
     public static let expired = SessionStatus(rawValue: "EXPIRED")
     public static let completed = SessionStatus(rawValue: "COMPLETED")
+    /// The session was approved.
+    public static let verified = SessionStatus(rawValue: "VERIFIED")
+    /// The session was declined.
+    public static let rejected = SessionStatus(rawValue: "REJECTED")
 }

@@ -53,6 +53,8 @@ public struct WorkflowExecutionState: Sendable, Equatable, Decodable {
             || status == .failed
             || status == .completed
             || status == .expired
+            || status == .verified
+            || status == .rejected
     }
 }
 

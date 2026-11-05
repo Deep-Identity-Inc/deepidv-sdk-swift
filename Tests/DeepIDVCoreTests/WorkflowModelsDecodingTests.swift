@@ -27,6 +27,20 @@ struct WorkflowModelsDecodingTests {
         #expect(SessionStatus.expired.rawValue == "EXPIRED")
     }
 
+    @Test func automaticDecisionsReadAsThePublicStatus() throws {
+        let decode = { (raw: String) in
+            try JSONDecoder().decode(SessionStatus.self, from: Data("\"\(raw)\"".utf8))
+        }
+        #expect(try decode("AUTO_APPROVE") == .verified)
+        #expect(try decode("DECLINED") == .rejected)
+        #expect(try decode("VERIFIED") == .verified)
+        #expect(try decode("REJECTED") == .rejected)
+        #expect(try decode("SUBMITTED") == .submitted)
+        // Encoding writes the public word.
+        let encoded = try JSONEncoder().encode(try decode("DECLINED"))
+        #expect(String(decoding: encoded, as: UTF8.self) == #""REJECTED""#)
+    }
+
     // MARK: - Create session
 
     @Test func workflowSessionDecodesTwoStepPlan() throws {

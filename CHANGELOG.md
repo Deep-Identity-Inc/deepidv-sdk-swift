@@ -41,6 +41,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Behavior:** a workflow run's `sessionStatus` uses the same words as
+  `GET /v1/sessions/{id}` and the webhooks: an automatic approval reads
+  `.verified` (it was `AUTO_APPROVE`) and an automatic decline `.rejected`
+  (it was `DECLINED`). Both are new `SessionStatus` constants.
+
 - **Behavior:** `DeepIDVConfig.documentCamera` now defaults to `.front`, for
   kiosks and tablets. Pass `.back` to keep the rear camera on a phone.
 - **Behavior:** `DeepIDVConfig.showsDocumentCaptureIntro` now defaults to
