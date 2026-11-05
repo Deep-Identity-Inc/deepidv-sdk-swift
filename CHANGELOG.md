@@ -11,23 +11,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - ID card capture in workflow sessions uses deepidv's document classifier
   when it's available, and falls back to on-device checks otherwise. It
-  recognises the card, waits while a card is held upside down, and never
+  recognizes the card, waits while a card is held upside down, and never
   auto-captures a health card (the shutter still works). Frames go to the
   same API host as the rest of the session.
   `DeepIDVConfig.usesDocumentClassifier` (default `true`) turns it off.
 - Passports auto-capture: the photo page is captured once it has been in
   view and steady for 1.5 s, and the frame on screen is shaped like the
-  photo page.
+  photo page. A card the classifier names in the passport step ("This looks
+  like a driver's license") is never auto-captured; the shutter still works.
 - A card held sideways is asked to be turned to landscape.
 - The document-capture screen is redesigned: one instruction at a time, a
-  frame that changes color as the capture goes, the recognised document's
-  name on the frame ("Ontario Driver's Licence"), a turn-it-over screen for
+  frame that changes color as the capture goes, the recognized document's
+  name on the frame ("Ontario Driver's License"), a turn-it-over screen for
   documents with a back, a done screen, a tips sheet and VoiceOver
   announcements with haptics. Light and dark appearance follow the system.
 - The selfie and face-liveness screens match it: a frosted surround with an
   oval, the instruction above, an oval that changes color as the face settles,
   a ring that fills through the liveness check, a heads-up before the screen
-  flashes colours, and the selfie frozen with a tick once taken.
+  flashes colors, and the selfie frozen with a tick once taken.
 - Every wait, result and error screen shares one design, in light and dark:
   preparing, submitting (with the ID and selfie just taken), try again, errors,
   camera access, and the liveness result.
@@ -38,6 +39,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `DeepIDVConfig.showsCompletionScreen` (default `true`) turns it off.
 - The auto-capture "close enough" check follows the frame drawn on screen, so
   a card that fills the frame is always close enough.
+- `DeepIDVWorkflowView`, `DeepIDVVerificationView` and `DocumentScannerView`
+  take an optional `documentCamera:` that overrides
+  `DeepIDVConfig.documentCamera` for that view.
+- Document capture turns Center Stage off on iPads that have it, so the
+  camera doesn't reframe the card while it is photographed. The app's own
+  setting is restored afterwards.
 
 ### Changed
 
@@ -45,7 +52,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `GET /v1/sessions/{id}` and the webhooks: an automatic approval reads
   `.verified` (it was `AUTO_APPROVE`) and an automatic decline `.rejected`
   (it was `DECLINED`). Both are new `SessionStatus` constants.
-
+- On-screen text uses US spelling ("license", "color"), except a document's
+  official name ("UK Driving Licence").
+- The anti-cheat check's error screen shows our own wording instead of the
+  server's message.
 - **Behavior:** `DeepIDVConfig.documentCamera` now defaults to `.front`, for
   kiosks and tablets. Pass `.back` to keep the rear camera on a phone.
 - **Behavior:** `DeepIDVConfig.showsDocumentCaptureIntro` now defaults to

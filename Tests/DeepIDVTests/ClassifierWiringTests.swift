@@ -288,7 +288,7 @@ private func makeCapture(
         classifier: classifier, spy: spy)
     #expect(model.isFinalSide)
     await model.run()
-    #expect(model.shownDocument?.label == "Ontario Driver's Licence")
+    #expect(model.shownDocument?.label == "Ontario Driver's License")
     #expect(spy.completed.count == 1)
 }
 

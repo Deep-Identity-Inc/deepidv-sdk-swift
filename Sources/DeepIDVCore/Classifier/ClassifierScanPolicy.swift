@@ -12,7 +12,9 @@ import Foundation
 ///
 /// The model has no passport class, so a passport page is captured as the web
 /// captures it: once the classifier has seen a good page for
-/// `passportCaptureDelay`, with no hold after.
+/// `passportCaptureDelay`, with no hold after. A card the classifier names in
+/// the passport step (a licence or an ID card) is never captured automatically:
+/// the warning shows until it leaves the frame, and the shutter still works.
 package struct ClassifierScanPolicy: Sendable {
     /// A well-framed card the classifier can't type is captured anyway once it has
     /// been good this long (plus `holdDuration`).
@@ -66,6 +68,9 @@ package struct ClassifierScanPolicy: Sendable {
         package var doc: ShownDoc?
         /// The capture being held, or `nil`.
         package var hold: Hold?
+        /// A card the classifier named in the passport step: auto-capture stays
+        /// off until the card leaves the frame.
+        package var cardInPassport: Mismatch?
     }
 
     /// What the guidance shows for one answer.
@@ -231,6 +236,19 @@ package struct ClassifierScanPolicy: Sendable {
         _ previous: State, decision: ScanDecision, outcome: DetectOutcome, context: Context
     ) -> Step {
         var step = stepOf(previous, decision: decision, outcome: outcome, context: context)
+        if context.passport, decision.key != .noID {
+            step.state.cardInPassport = step.state.cardInPassport ?? previous.cardInPassport
+        }
+        if let card = step.state.cardInPassport {
+            // A card held up for a passport: warn, and never photograph it automatically.
+            step.state.hold = nil
+            step.state.goodSince = nil
+            step.capture = nil
+            if step.shown != .error { step.shown = .mismatch }
+            step.mismatch = card
+            step.chip = nil
+            return step
+        }
         // A card that looks upside down would be photographed upside down: wait.
         let hold = context.wrongWay ? nil : nextHold(previous.hold, step: step, context: context)
         step.state.hold = hold
@@ -350,6 +368,13 @@ package struct ClassifierScanPolicy: Sendable {
                 let mismatch =
                     DocumentClassCatalog.isIDCardLicenceMixup(docID, picked: picked)
                     ? nil : Mismatch(id: docID, group: seen)
+                if context.passport, let mismatch {
+                    var step = base(State(failures: 0, goodSince: nil, doc: nil), .mismatch)
+                    step.mismatch = mismatch
+                    step.chip = nil
+                    step.state.cardInPassport = mismatch
+                    return step
+                }
                 return untypedStep(
                     previous, decision: decision, context: context, goodSince: goodSince,
                     doc: nil, mismatch: mismatch)

@@ -19,16 +19,22 @@ public struct DeepIDVWorkflowView: View {
     private let client: DeepIDVClient
     private let source: Source
     private let onResult: (Result<WorkflowRunResult, DeepIDVError>) -> Void
+    private let documentCamera: DocumentCamera?
 
     /// Creates a session for `workflowID` and runs it.
+    /// - Parameter documentCamera: the camera for the document photos, over
+    ///   ``DeepIDVConfig/documentCamera``; `nil` (the default) keeps the
+    ///   config's. Selfies and the liveness check always use the front camera.
     public init(
         client: DeepIDVClient,
         workflowID: String,
         user: WorkflowUser,
+        documentCamera: DocumentCamera? = nil,
         onResult: @escaping (Result<WorkflowRunResult, DeepIDVError>) -> Void
     ) {
         self.client = client
         self.source = .workflow(id: workflowID, user: user)
+        self.documentCamera = documentCamera
         self.onResult = onResult
     }
 
@@ -37,13 +43,18 @@ public struct DeepIDVWorkflowView: View {
     /// end-user identity fields were supplied at creation, so none are needed
     /// here. A session that has already started, or is terminal, fails with
     /// ``DeepIDVError/Kind/conflict``.
+    /// - Parameter documentCamera: the camera for the document photos, over
+    ///   ``DeepIDVConfig/documentCamera``; `nil` (the default) keeps the
+    ///   config's. Selfies and the liveness check always use the front camera.
     public init(
         client: DeepIDVClient,
         sessionID: String,
+        documentCamera: DocumentCamera? = nil,
         onResult: @escaping (Result<WorkflowRunResult, DeepIDVError>) -> Void
     ) {
         self.client = client
         self.source = .session(id: sessionID)
+        self.documentCamera = documentCamera
         self.onResult = onResult
     }
 
@@ -53,17 +64,26 @@ public struct DeepIDVWorkflowView: View {
     /// never been submitted to, this continues a session that was already started.
     /// A terminal session shows the entry error screen and reports
     /// ``DeepIDVError/Kind/conflict`` through `onResult` when dismissed.
+    /// - Parameter documentCamera: the camera for the document photos, over
+    ///   ``DeepIDVConfig/documentCamera``; `nil` (the default) keeps the
+    ///   config's. Selfies and the liveness check always use the front camera.
     public init(
         client: DeepIDVClient,
         resumingSessionID sessionID: String,
+        documentCamera: DocumentCamera? = nil,
         onResult: @escaping (Result<WorkflowRunResult, DeepIDVError>) -> Void
     ) {
         self.client = client
         self.source = .resume(id: sessionID)
+        self.documentCamera = documentCamera
         self.onResult = onResult
     }
 
     public var body: some View {
+        flow.environment(\.documentCameraOverride, documentCamera)
+    }
+
+    @ViewBuilder private var flow: some View {
         switch source {
         case .workflow(let id, let user):
             WorkflowFlowView(

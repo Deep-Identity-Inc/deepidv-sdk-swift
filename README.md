@@ -294,8 +294,8 @@ A `WorkflowFailure` carries:
 | `.idFaceNotDetected`         | No face photo was found on the ID.                           |
 | `.idTextNotReadable`         | The text on the ID couldn't be read.                         |
 | `.documentTypeNotAccepted`   | The workflow doesn't accept this type of document.           |
-| `.documentTypeUnrecognized`  | The document couldn't be recognised as the selected type.    |
-| `.documentTypeLowConfidence` | The document type was recognised with too little confidence. |
+| `.documentTypeUnrecognized`  | The document couldn't be recognized as the selected type.    |
+| `.documentTypeLowConfidence` | The document type was recognized with too little confidence. |
 | `.selfieFaceNotDetected`     | No face was found in the selfie.                             |
 | `.selfieMultipleFaces`       | More than one face was found in the selfie.                  |
 | `.selfieIDFaceMismatch`      | The selfie doesn't match the face on the ID.                 |

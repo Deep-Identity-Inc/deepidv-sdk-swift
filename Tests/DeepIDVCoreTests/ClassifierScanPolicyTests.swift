@@ -195,18 +195,49 @@ private func step(
         #expect(step(back.state, steady, at).capture == .passport)
     }
 
-    @Test func aLicenceHeldUpForAPassportIsNamedAndStillCapturedAsAPage() {
+    @Test func aLicenceHeldUpForAPassportIsNamedAndNeverAutoCaptured() {
         var state = Policy.State()
         var steps: [Policy.Step] = []
-        for i in 0...4 {
+        for i in 0...10 {
             let s = step(
                 state, classified("ca_on_dl"),
                 context(picked: .passport, health: .apiOnly, now: Double(i) * 0.5))
             steps.append(s)
             state = s.state
         }
-        #expect(steps.allSatisfy { $0.shown == .mismatch })
-        #expect(steps.first { $0.capture != nil }?.capture == .passport)
+        #expect(steps.allSatisfy { $0.shown == .mismatch && $0.mismatch?.id == "ca_on_dl" })
+        #expect(steps.allSatisfy { $0.capture == nil && $0.state.hold == nil })
+    }
+
+    @Test func theCardWarningInThePassportStepStaysUntilTheCardLeaves() {
+        let page = { (now: TimeInterval) in context(picked: .passport, health: .apiOnly, now: now) }
+        let named = step(Policy.State(), classified("gb_dvla_dl"), page(0))
+        // The classifier stops naming it, or the frame is soft: still the warning,
+        // and no capture however long it stays.
+        var state = named.state
+        for (i, decision) in [steady, quality, error, steady, steady, steady].enumerated() {
+            let s = step(state, decision, page(Double(i + 1)))
+            #expect(s.mismatch?.id == "gb_dvla_dl")
+            #expect(s.capture == nil)
+            state = s.state
+        }
+        // Once it leaves the frame, a page held up afterwards captures as usual.
+        let gone = step(state, noID, page(8))
+        #expect(gone.state.cardInPassport == nil)
+        let back = step(gone.state, steady, page(9))
+        #expect(back.shown == .identifying)
+        #expect(step(back.state, steady, page(10.5)).capture == .passport)
+    }
+
+    @Test func aWeakCardGuessOnAPassportPageNeverBlocksIt() {
+        // Passport pages sometimes get one card guess the classifier doesn't stand
+        // by: only a type it confirms counts.
+        let page = { (now: TimeInterval) in context(picked: .passport, health: .apiOnly, now: now) }
+        let guess = ScanDecision(
+            .identifying, source: .api, doc: ScanDoc(id: "gb_dvla_dl", confidence: 0.62))
+        let first = step(Policy.State(), guess, page(0))
+        #expect(first.state.cardInPassport == nil)
+        #expect(step(first.state, steady, page(1.5)).capture == .passport)
     }
 
     @Test func theUpsideDownCheckHoldsEveryCapture() {

@@ -98,10 +98,10 @@ enum CaptureStage: Sendable, Equatable {
         }
     }
 
-    /// A document kind in a sentence: "a driver's licence", "an ID card".
+    /// A document kind in a sentence: "a driver's license", "an ID card".
     static func kindLabel(_ kind: DocumentClassKind) -> String {
         switch kind {
-        case .driversLicence: return "a driver's licence"
+        case .driversLicence: return "a driver's license"
         case .idCard: return "an ID card"
         case .healthCard: return "a health card"
         case .federal: return "a government ID"

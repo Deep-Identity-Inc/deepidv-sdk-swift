@@ -87,19 +87,19 @@ private let settle = CaptureStagePresenter.settle
 
 @Test func theWordsFollowTheDocumentAndSide() {
     let licence = CaptureCopy.Context(documentType: .driversLicense, isFinalSide: false)
-    #expect(CaptureCopy.lines(for: .findDocument, in: licence).title == "Fill the frame with your licence")
+    #expect(CaptureCopy.lines(for: .findDocument, in: licence).title == "Fill the frame with your license")
     #expect(CaptureCopy.lines(for: .findDocument, in: licence).subtitle == CaptureCopy.automatic)
     let back = CaptureCopy.Context(documentType: .driversLicense, isBack: true, isFinalSide: true)
     #expect(
         CaptureCopy.lines(for: .findDocument, in: back).title
-            == "Fill the frame with the back of your licence")
+            == "Fill the frame with the back of your license")
     let passport = CaptureCopy.Context(documentType: .passport)
     #expect(
         CaptureCopy.lines(for: .findDocument, in: passport).title
             == "Fill the frame with your passport photo page")
     #expect(CaptureCopy.lines(for: .captured, in: licence).title == "Front captured")
     #expect(CaptureCopy.lines(for: .captured, in: back).title == "All done!")
-    #expect(CaptureCopy.lines(for: .flip, in: licence).title == "Now show the back of your licence")
+    #expect(CaptureCopy.lines(for: .flip, in: licence).title == "Now show the back of your license")
 }
 
 @Test func everyStageHasATitle() {
@@ -118,7 +118,7 @@ private let settle = CaptureStagePresenter.settle
 }
 
 @Test func theRecognisedDocumentIsNamed() {
-    #expect(ShownDocument(id: "ca_on_dl", confirmed: true).label == "Ontario Driver's Licence")
+    #expect(ShownDocument(id: "ca_on_dl", confirmed: true).label == "Ontario Driver's License")
     #expect(ShownDocument(id: "nope", confirmed: false).label == nil)
 }
 
@@ -180,7 +180,7 @@ private let settle = CaptureStagePresenter.settle
 
 // MARK: - Face screens
 
-@Test func theLivenessWordsFollowTheCheck() {
+@MainActor @Test func theLivenessWordsFollowTheCheck() {
     let light = ChallengeType.faceMovementAndLight
     #expect(
         CaptureRunView.copy(challenge: light, centered: false, tooClose: false, flashing: false)
@@ -199,7 +199,7 @@ private let settle = CaptureStagePresenter.settle
     #expect(CaptureRunView.tone(centered: true, tooClose: false, flashing: false) == .success)
 }
 
-@Test func theSelfieWordsAndColorFollowTheFraming() {
+@MainActor @Test func theSelfieWordsAndColorFollowTheFraming() {
     let all: [SelfieGuidance?] = [nil, .noFace, .multipleFaces, .moveCloser, .centerFace, .holdSteady]
     for guidance in all {
         let copy = SelfieCaptureOverlayView.copy(guidance: guidance, captured: false, instruction: "x")
@@ -213,7 +213,7 @@ private let settle = CaptureStagePresenter.settle
             == "Got it!")
 }
 
-@Test func theFaceOvalFitsTheScreen() {
+@MainActor @Test func theFaceOvalFitsTheScreen() {
     for size in [CGSize(width: 1366, height: 1024), CGSize(width: 1024, height: 1366),
                  CGSize(width: 393, height: 852)] {
         let oval = FaceCaptureOverlay.oval(in: size)

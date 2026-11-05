@@ -288,6 +288,14 @@ private func run(
     #expect(scanner.verdict(at: clock.now) == .block(.healthCard))
 }
 
+@MainActor @Test func aLicenceInThePassportStepIsNeverLetThrough() async {
+    let clock = ManualClock()
+    let scanner = makeScanner(
+        ScriptedDetector { _, _ in card("gb_dvla_dl", 0.9) }, type: .passport, clock: clock)
+    await run(scanner, clock: clock, frames: 12)
+    #expect(scanner.verdict(at: clock.now) == .hold(.otherDocument(.driversLicence)))
+}
+
 @MainActor @Test func anotherKindOfDocumentIsNamedThenCapturedUntyped() async {
     let clock = ManualClock()
     let scanner = makeScanner(

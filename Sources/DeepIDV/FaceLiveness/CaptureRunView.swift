@@ -76,7 +76,7 @@ struct CaptureRunView: View {
             case .faceMovement:
                 return .init(title: "Slowly move closer", subtitle: "Keep your face inside the oval")
             case .faceMovementAndLight:
-                return .init(title: "Hold still", subtitle: "The screen will flash a few colours")
+                return .init(title: "Hold still", subtitle: "The screen will flash a few colors")
             }
         }
         if tooClose {
@@ -88,7 +88,7 @@ struct CaptureRunView: View {
         case .faceMovementAndLight:
             return .init(
                 title: "Position your face in the oval",
-                subtitle: "Then hold still while the screen flashes colours")
+                subtitle: "Then hold still while the screen flashes colors")
         }
     }
 

@@ -26,20 +26,27 @@ public struct DeepIDVVerificationView: View {
     private let client: DeepIDVClient
     private let igamingSessionID: String?
     private let onResult: (Result<DeepIDVVerificationResult, DeepIDVError>) -> Void
+    private let documentCamera: DocumentCamera?
 
+    /// - Parameter documentCamera: the camera for the document photos, over
+    ///   ``DeepIDVConfig/documentCamera``; `nil` (the default) keeps the
+    ///   config's.
     public init(
         client: DeepIDVClient,
         igamingSessionID: String? = nil,
+        documentCamera: DocumentCamera? = nil,
         onResult: @escaping (Result<DeepIDVVerificationResult, DeepIDVError>) -> Void
     ) {
         self.client = client
         self.igamingSessionID = igamingSessionID
+        self.documentCamera = documentCamera
         self.onResult = onResult
     }
 
     public var body: some View {
         VerificationFlowView(
             client: client, igamingSessionID: igamingSessionID, onResult: onResult)
+            .environment(\.documentCameraOverride, documentCamera)
     }
 }
 
@@ -47,6 +54,7 @@ public struct DeepIDVVerificationView: View {
 /// selfie → anti-cheat → verifying, driven by a ``VerificationFlowModel``.
 /// Internal — hosts use ``DeepIDVVerificationView``.
 struct VerificationFlowView: View {
+    @Environment(\.documentCameraOverride) private var cameraOverride
     @StateObject private var model: VerificationFlowModel
     private let client: DeepIDVClient
 
@@ -80,7 +88,7 @@ struct VerificationFlowView: View {
             // the document OCR server-side (so no `scanDocument` call here).
             DocumentCaptureFlowView<(FileInput, FileInput?)>(
                 documentType: model.documentType,
-                cameraPosition: client.config.documentCamera.avPosition,
+                cameraPosition: (cameraOverride ?? client.config.documentCamera).avPosition,
                 showsIntro: client.config.showsDocumentCaptureIntro,
                 complete: { front, back, _ in (front, back) },
                 onResult: { result in

@@ -63,7 +63,7 @@ struct ShownDocument: Sendable, Equatable {
     /// Confirmed, or only a first guess.
     var confirmed: Bool
 
-    /// The name to show: "Ontario Driver's Licence".
+    /// The name to show: "Ontario Driver's License".
     var label: String? { DocumentClassCatalog.label(of: id) }
 }
 

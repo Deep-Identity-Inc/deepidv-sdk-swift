@@ -1,7 +1,9 @@
 // DeepIDVCore › Classifier
 
 /// The names the capture screen shows for a document the classifier recognised:
-/// "Ontario Driver's Licence", "UK Driving Licence", "Texas Driver's License".
+/// "Ontario Driver's License", "UK Driving Licence", "Texas Driver's License".
+/// US spelling throughout, except a document's own official name, as printed
+/// on it ("UK Driving Licence", "Canadian Firearms Licence").
 ///
 /// Built from the class id (`<country>_<region>_<kind>`), so a class added to the
 /// model later still gets a sensible name from its region and kind.
@@ -18,10 +20,10 @@ extension DocumentClassCatalog {
         return region.map { "\($0) \(noun)" } ?? noun
     }
 
-    /// The kind as a title: "Driver's Licence" (US: "Driver's License").
+    /// The kind as a title: "Driver's License".
     package static func kindLabel(_ kind: DocumentClassKind, country: String? = nil) -> String {
         switch kind {
-        case .driversLicence: return country == "us" ? "Driver's License" : "Driver's Licence"
+        case .driversLicence: return "Driver's License"
         case .idCard: return "ID Card"
         case .healthCard: return "Health Card"
         case .federal: return "Government ID"

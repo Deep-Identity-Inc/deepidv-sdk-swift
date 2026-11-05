@@ -68,10 +68,10 @@ struct CaptureCopy: Sendable, Hashable {
         }
     }
 
-    /// The document in a sentence: "licence", "ID card", "passport".
+    /// The document in a sentence: "license", "ID card", "passport".
     static func noun(for type: DocumentType) -> String {
         switch type {
-        case .driversLicense: return "licence"
+        case .driversLicense: return "license"
         case .idCard: return "ID card"
         case .passport: return "passport"
         case .auto: return "ID"

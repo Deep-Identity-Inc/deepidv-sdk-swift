@@ -4,12 +4,12 @@ import Testing
 
 @Suite struct DocumentClassLabelsTests {
     @Test func aRegionalLicenceIsNamedByItsRegion() {
-        #expect(DocumentClassCatalog.label(of: "ca_on_dl") == "Ontario Driver's Licence")
-        #expect(DocumentClassCatalog.label(of: "ca_bc_dl_bcsc") == "British Columbia Driver's Licence")
-        #expect(DocumentClassCatalog.label(of: "ca_ab_dl_2026") == "Alberta Driver's Licence")
+        #expect(DocumentClassCatalog.label(of: "ca_on_dl") == "Ontario Driver's License")
+        #expect(DocumentClassCatalog.label(of: "ca_bc_dl_bcsc") == "British Columbia Driver's License")
+        #expect(DocumentClassCatalog.label(of: "ca_ab_dl_2026") == "Alberta Driver's License")
     }
 
-    @Test func aUSLicenceIsSpeltTheUSWay() {
+    @Test func aUSLicenseIsSpelledTheUSWay() {
         #expect(DocumentClassCatalog.label(of: "us_tx_dl") == "Texas Driver's License")
         #expect(DocumentClassCatalog.label(of: "us_dc_dl") == "District of Columbia Driver's License")
     }

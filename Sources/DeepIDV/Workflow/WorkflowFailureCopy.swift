@@ -34,7 +34,7 @@ enum WorkflowFailureCopy {
             return ("This document isn't accepted", "Please use a different type of ID.")
         case .documentTypeUnrecognized, .documentTypeLowConfidence:
             return (
-                "We couldn't recognise your ID",
+                "We couldn't recognize your ID",
                 "Make sure you're using the document type you selected, capture the whole "
                     + "document in good light, then try again."
             )

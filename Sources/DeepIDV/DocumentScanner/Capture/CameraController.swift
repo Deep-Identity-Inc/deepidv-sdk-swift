@@ -149,6 +149,13 @@ final class AVFoundationCameraController: NSObject, CameraController, @unchecked
     /// ~2-3 fps in low light, starving both face detection and the replay clip).
     /// `nil` leaves the default behavior (document/selfie flows).
     private let lockedFrameRate: Int?
+    /// Whether the front camera may follow and zoom on a face by itself
+    /// (Center Stage, on recent iPads). Off for documents: reframing would
+    /// shift and crop the card while it is being lined up and photographed.
+    private let allowsCenterStage: Bool
+    /// Center Stage as the app had it before this camera turned it off, put
+    /// back on `stop()`. Touched only on `sessionQueue`.
+    private var savedCenterStage: (mode: AVCaptureDevice.CenterStageControlMode, enabled: Bool)?
     /// The capture session, exposed so the SwiftUI preview layer can bind to it.
     let session = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
@@ -167,9 +174,13 @@ final class AVFoundationCameraController: NSObject, CameraController, @unchecked
     /// `sampleQueue`; `nil` when not recording.
     private var clipRecorder: LivenessClipRecorder?
 
-    init(position: AVCaptureDevice.Position = .back, lockedFrameRate: Int? = nil) {
+    init(
+        position: AVCaptureDevice.Position = .back, lockedFrameRate: Int? = nil,
+        allowsCenterStage: Bool = true
+    ) {
         self.position = position
         self.lockedFrameRate = lockedFrameRate
+        self.allowsCenterStage = allowsCenterStage
         var continuation: AsyncStream<CameraFrame>.Continuation!
         // Liveness: bound the analysis buffer so slow face-detection can't pile up
         // frame copies. Document/selfie keep the unbounded stream (unchanged).
@@ -190,6 +201,7 @@ final class AVFoundationCameraController: NSObject, CameraController, @unchecked
         try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
             sessionQueue.async {
                 do {
+                    self.holdCenterStageOff()
                     try self.configureIfNeeded()
                     if !self.session.isRunning { self.session.startRunning() }
                     self.applyFrameRateLock()  // must be after startRunning to stick
@@ -204,6 +216,7 @@ final class AVFoundationCameraController: NSObject, CameraController, @unchecked
     func stop() {
         sessionQueue.async {
             if self.session.isRunning { self.session.stopRunning() }
+            self.restoreCenterStage()
         }
         // Drop any recorder (a successful run finalizes it first via
         // `stopRecording()`; this only matters when capture threw mid-attempt).
@@ -331,6 +344,25 @@ final class AVFoundationCameraController: NSObject, CameraController, @unchecked
             }
             device.unlockForConfiguration()
         }
+    }
+
+    /// Turns Center Stage off while this camera runs, when it isn't allowed. The
+    /// setting is app-wide, so the app's own choice is kept to put back.
+    private func holdCenterStageOff() {
+        guard !allowsCenterStage, savedCenterStage == nil else { return }
+        savedCenterStage = (AVCaptureDevice.centerStageControlMode, AVCaptureDevice.isCenterStageEnabled)
+        AVCaptureDevice.centerStageControlMode = .app
+        AVCaptureDevice.isCenterStageEnabled = false
+    }
+
+    private func restoreCenterStage() {
+        guard let saved = savedCenterStage else { return }
+        savedCenterStage = nil
+        // Only the app may set it while the mode is `.app`; set it, then hand
+        // control back as it was.
+        AVCaptureDevice.centerStageControlMode = .app
+        AVCaptureDevice.isCenterStageEnabled = saved.enabled
+        AVCaptureDevice.centerStageControlMode = saved.mode
     }
 
     /// Re-pins the sensor frame rate after `startRunning()` — setting it only

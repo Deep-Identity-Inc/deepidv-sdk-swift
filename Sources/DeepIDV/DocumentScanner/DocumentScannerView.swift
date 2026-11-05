@@ -22,14 +22,20 @@ public struct DocumentScannerView: View {
     private let client: DeepIDVClient
     private let documentType: DocumentType
     private let onResult: (Result<DocumentScanResult, DeepIDVError>) -> Void
+    private let documentCamera: DocumentCamera?
 
+    /// - Parameter documentCamera: the camera for the document photos, over
+    ///   ``DeepIDVConfig/documentCamera``; `nil` (the default) keeps the
+    ///   config's.
     public init(
         client: DeepIDVClient,
         documentType: DocumentType,
+        documentCamera: DocumentCamera? = nil,
         onResult: @escaping (Result<DocumentScanResult, DeepIDVError>) -> Void
     ) {
         self.client = client
         self.documentType = documentType
+        self.documentCamera = documentCamera
         self.onResult = onResult
     }
 
@@ -37,7 +43,7 @@ public struct DocumentScannerView: View {
         // Capture the document, then OCR it server-side via `scanDocument`.
         DocumentCaptureFlowView(
             documentType: documentType,
-            cameraPosition: client.config.documentCamera.avPosition,
+            cameraPosition: (documentCamera ?? client.config.documentCamera).avPosition,
             showsIntro: client.config.showsDocumentCaptureIntro,
             complete: { front, back, type in
                 try await client.scanDocument(front: front, back: back, type: type)
@@ -77,7 +83,8 @@ struct DocumentCaptureFlowView<Output>: View {
             wrappedValue: DocumentCaptureModel(
                 documentType: documentType,
                 captureMode: captureMode,
-                controller: AVFoundationCameraController(position: cameraPosition),
+                controller: AVFoundationCameraController(
+                    position: cameraPosition, allowsCenterStage: false),
                 evaluator: VisionDocumentFrameEvaluator(),
                 encoder: DocumentStillEncoder(),
                 authorizer: SystemCameraAuthorizer(),

@@ -97,17 +97,19 @@ struct AntiCheatFlowView: View {
             }
 
         case .failed(let error):
+            // Our own words, never the server's message (see WorkflowFailureCopy).
+            let copy = WorkflowFailureCopy.error(error)
             if error.kind == .cameraPermissionDenied {
                 // Retrying re-arms the same capture surface, which will
                 // immediately deny again — offer the Settings deep-link first
                 // so the host isn't stuck in a loop with no way out.
                 Kit.StatusScreen(
-                    badge: .camera, title: "Camera access is off", message: error.message,
+                    badge: .camera, title: "Camera access is off", message: copy.body,
                     primary: .init(title: "Open Settings", run: openSettings),
                     secondary: .init(title: "Try again", run: model.retry))
             } else {
                 Kit.StatusScreen(
-                    badge: .warning, title: "Something went wrong", message: error.message,
+                    badge: .warning, title: copy.title, message: copy.body,
                     primary: .init(title: "Try again", run: model.retry))
             }
         }

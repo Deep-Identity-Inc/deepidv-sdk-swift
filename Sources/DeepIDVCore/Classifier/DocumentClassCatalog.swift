@@ -3,7 +3,7 @@
 /// The broad kind of a classifier document class.
 ///
 /// The capture screen names a recognised document by its region and kind
-/// ("Ontario Driver's Licence"), built from the class id; see
+/// ("Ontario Driver's License"), built from the class id; see
 /// `DocumentClassCatalog.label(of:)`.
 package enum DocumentClassKind: String, Sendable, Equatable, CaseIterable {
     case driversLicence

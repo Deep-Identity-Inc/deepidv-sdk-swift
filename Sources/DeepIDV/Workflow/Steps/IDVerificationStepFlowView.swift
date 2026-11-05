@@ -7,6 +7,7 @@ import UIKit
 /// Captures every required document plus one selfie, then uploads and submits.
 struct IDVerificationStepFlowView: View {
     @Environment(\.theme) private var theme
+    @Environment(\.documentCameraOverride) private var cameraOverride
     @StateObject private var model: IDVerificationStepFlowModel
     private let registerCancellation: (@escaping () -> Void) -> Void
     private let documentCamera: DocumentCamera
@@ -87,7 +88,7 @@ struct IDVerificationStepFlowView: View {
             DocumentCaptureFlowView<(FileInput, FileInput?)>(
                 documentType: type,
                 captureMode: captureMode,
-                cameraPosition: documentCamera.avPosition,
+                cameraPosition: (cameraOverride ?? documentCamera).avPosition,
                 showsIntro: showsIntro,
                 makeClassifier: { model.classifier(for: type) },
                 usesClassifierRules: model.usesClassifierRules,
