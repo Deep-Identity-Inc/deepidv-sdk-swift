@@ -123,10 +123,15 @@ struct DocumentCaptureTunables: Sendable, Equatable {
     /// early if the document leaves the frame.
     var flipGracePeriod: TimeInterval = 2
 
-    /// Seconds of trying-to-lock after which the capture *view* reveals the manual
-    /// shutter. The analyzer itself is wall-clock-free for deterministic tests;
-    /// this value is carried here for the view to consume.
+    /// Seconds after a document first comes into view on a side after which the
+    /// capture *view* reveals the manual shutter. Counted from the first sighting so
+    /// that time spent finding the card doesn't push people to the shutter while
+    /// auto-capture is still working. The analyzer itself is wall-clock-free for
+    /// deterministic tests; this value is carried here for the view to consume.
     var autoCaptureTimeout: TimeInterval = 8
+
+    /// The manual shutter shows this long into a side at the latest, card or not.
+    var manualShutterCeiling: TimeInterval = 15
 
     /// How long the per-side success checkmark stays on screen after a side locks,
     /// before the flow advances to the back (or to processing). Purely a display
@@ -147,6 +152,18 @@ struct DocumentCaptureTunables: Sendable, Equatable {
     /// the classifier never sees) is captured once the on-device checks have held
     /// this long, as on the web.
     var steadyCaptureDuration: TimeInterval = 1.5
+
+    /// With the classifier's capture rules, blur never holds a side back, but the
+    /// moment of capture waits briefly for a frame at least this fraction as sharp
+    /// as the sharpest of the last `sharpnessWindow`: the still is then not taken
+    /// mid-movement. Sharpness is only compared within a run, never to a fixed bar.
+    var relativeSharpnessFloor: Double = 0.6
+
+    /// The stretch of recent frames (with a document) the sharpness is compared with.
+    var sharpnessWindow: TimeInterval = 2
+
+    /// The longest capture waits for a sharper frame once everything else is ready.
+    var sharpnessWaitLimit: TimeInterval = 0.8
 
     // The compiler-synthesized memberwise initializer is used — every stored
     // property has a default, so `.init()` and `.init(stabilityFrameCount:)` both work.

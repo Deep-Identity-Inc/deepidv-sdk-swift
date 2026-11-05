@@ -181,6 +181,44 @@ private func probed(
         #expect(!probed(probed(s, frame(0.8)), frame(0.8)).flip)
     }
 
+    @Test func aCardTheRightWayUpThatScoresAsWellTurnedOverIsLeftAlone() {
+        // A card out of position: its frames name it at about 0.88 but never confirm,
+        // and turned over it scores about the same.
+        #expect(WrongWayDetector.sameClassMargin == 0.15)
+        var s = WrongWayDetector()
+        for (n, score) in [0.87, 0.88, 0.88, 0.87].enumerated() {
+            s.recordFrame(frame(score, top: "gb_dvla_dl"), at: Double(n) * 0.5, confirmed: false)
+        }
+        let probe = frame(0.89, id: "gb_dvla_dl", top: "gb_dvla_dl")
+        let twice = probed(probed(s, probe, at: 2), probe, at: 3)
+        #expect(!twice.flip)
+        #expect(twice.pending == nil)
+        #expect(!twice.shown, "no turn-the-card note either")
+        #expect(!twice.holdsCapture)
+    }
+
+    @Test func aProbeNamingTheSameClassFlipsWhenItClearlyBeatsTheFrames() {
+        var s = WrongWayDetector()
+        for (n, score) in [0.65, 0.7, 0.68, 0.69].enumerated() {
+            s.recordFrame(frame(score, top: "ca_on_dl"), at: Double(n) * 0.5, confirmed: false)
+        }
+        let probe = frame(0.9, id: "ca_on_dl")
+        #expect(probed(probed(s, probe, at: 2), probe, at: 3).flip)
+        // Under the margin over the frames' mean (0.68): no flip.
+        let close = frame(0.8, id: "ca_on_dl")
+        #expect(!probed(probed(s, close, at: 2), close, at: 3).flip)
+    }
+
+    @Test func anUpsideDownCardReadAsAnotherClassStillFlips() {
+        // An upside-down Ontario licence read as a UK one at a good score.
+        var s = WrongWayDetector()
+        for (n, score) in [0.82, 0.61, 0.7, 0.66].enumerated() {
+            s.recordFrame(frame(score, top: "gb_dvla_dl"), at: Double(n) * 0.5, confirmed: false)
+        }
+        let probe = frame(0.9, id: "ca_on_dl")
+        #expect(probed(probed(s, probe, at: 2), probe, at: 3).flip)
+    }
+
     @Test func anUpsideDownLicenceFlipsBeforeTheUntypedCapture() {
         // Made-up scores in the range an upside-down card gets for a wrong class,
         // with probes scoring as a known card the right way up.

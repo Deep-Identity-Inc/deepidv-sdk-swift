@@ -70,7 +70,8 @@ private func bytes(_ input: FileInput?) -> Data? { input.flatMap(ClassifierImage
 @MainActor
 private func makeCapture(
     type: DocumentType, captureMode: CaptureMode? = nil, qualities: [CaptureQuality],
-    classifier: FakeClassifier?, rules: Bool = false, spy: CaptureSpy
+    classifier: FakeClassifier?, rules: Bool = false, sharpnessWaitLimit: TimeInterval = 0.8,
+    spy: CaptureSpy
 ) -> DocumentCaptureModel<Void> {
     DocumentCaptureModel(
         documentType: type,
@@ -81,7 +82,8 @@ private func makeCapture(
         authorizer: Authorized(),
         tunables: .init(
             stabilityFrameCount: 2, holdStillDuration: 0, sideCapturedDisplay: 0,
-            classifierHoldDuration: 0, steadyCaptureDuration: 0),
+            classifierHoldDuration: 0, steadyCaptureDuration: 0,
+            sharpnessWaitLimit: sharpnessWaitLimit),
         classifier: classifier,
         usesClassifierRules: rules,
         onFrontCaptured: { spy.reports.append($0) },
@@ -162,6 +164,34 @@ private func makeCapture(
     let model = makeCapture(
         type: .idCard, captureMode: .frontOnly, qualities: [soft, soft],
         classifier: FakeClassifier(.go), spy: spy)
+    await model.run()
+    #expect(spy.completed.count == 1)
+}
+
+@MainActor @Test func aSoftMomentAfterASharpOneWaitsForASharperFrame() async {
+    let spy = CaptureSpy()
+    let model = makeCapture(
+        type: .idCard, captureMode: .frontOnly, qualities: [good, soft, soft, soft],
+        classifier: FakeClassifier(.go), sharpnessWaitLimit: 100, spy: spy)
+    await model.run()
+    #expect(spy.completed.isEmpty)
+    #expect(model.guidance == .holdSteady)
+}
+
+@MainActor @Test func theWaitEndsOnTheNextSharpFrame() async {
+    let spy = CaptureSpy()
+    let model = makeCapture(
+        type: .idCard, captureMode: .frontOnly, qualities: [good, soft, soft, good],
+        classifier: FakeClassifier(.go), sharpnessWaitLimit: 100, spy: spy)
+    await model.run()
+    #expect(spy.completed.count == 1)
+}
+
+@MainActor @Test func theWaitForASharperFrameIsCapped() async {
+    let spy = CaptureSpy()
+    let model = makeCapture(
+        type: .idCard, captureMode: .frontOnly, qualities: [good, soft, soft],
+        classifier: FakeClassifier(.go), sharpnessWaitLimit: 0, spy: spy)
     await model.run()
     #expect(spy.completed.count == 1)
 }

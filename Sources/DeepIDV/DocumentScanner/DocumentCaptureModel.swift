@@ -94,6 +94,14 @@ final class DocumentCaptureModel<Output>: ObservableObject {
     private var lastQuality: CaptureQuality?
     /// When the document last became steady — the start of the hold-still dwell.
     private var steadyStartedAt: Date?
+    /// Recent sharpness scores of frames with a document on this side, on `clock`.
+    private var recentSharpness: [(time: TimeInterval, value: Double)] = []
+    /// When capture, otherwise ready, began waiting for a sharper frame.
+    private var sharpnessWaitSince: TimeInterval?
+    /// Whether a document has been in view on this side yet.
+    private var documentSeenOnSide = false
+    /// When the manual shutter is due to show.
+    private var shutterDeadline: Date?
 
     /// Capture diagnostics. Filter the Xcode console / Console.app by this
     /// subsystem (`com.deepidv.sdk`) to see why auto-capture is or isn't locking.
@@ -262,6 +270,8 @@ final class DocumentCaptureModel<Output>: ObservableObject {
                 guidance = nil
                 manualRequested = false
                 steadyStartedAt = nil
+                sharpnessWaitSince = nil
+                recentSharpness.removeAll()
                 holdProgress = 0
                 analyzer.reset()
                 startManualShutterTimer()
@@ -308,6 +318,14 @@ final class DocumentCaptureModel<Output>: ObservableObject {
         let quality = evaluator.quality(of: frame, for: documentType)
         lastQuality = quality
         let now = clock()
+        if quality.documentDetected {
+            recentSharpness.append((now, quality.sharpness))
+            recentSharpness.removeAll { now - $0.time > tunables.sharpnessWindow + 1e-9 }
+            if !documentSeenOnSide {
+                documentSeenOnSide = true
+                scheduleManualShutter(in: tunables.autoCaptureTimeout)
+            }
+        }
         // With the classifier's rules, blur only shapes which frame becomes the
         // photo; without them, the blur gate stands as before.
         let decision = analyzer.evaluate(quality, checksSharpness: !usesClassifierRules)
@@ -344,7 +362,29 @@ final class DocumentCaptureModel<Output>: ObservableObject {
 
     private func resetDwell() {
         steadyStartedAt = nil
+        sharpnessWaitSince = nil
         holdProgress = 0
+    }
+
+    /// Under the classifier's rules, whether this frame is sharp enough to be the
+    /// moment of capture: at least `relativeSharpnessFloor` of the sharpest recent
+    /// frame, or once capture has waited `sharpnessWaitLimit` for one.
+    private func sharpEnough(_ quality: CaptureQuality) -> Bool {
+        guard usesClassifierRules else { return true }
+        let now = clock()
+        let peak = recentSharpness.map(\.value).max() ?? 0
+        if quality.sharpness >= peak * tunables.relativeSharpnessFloor {
+            sharpnessWaitSince = nil
+            return true
+        }
+        let since = sharpnessWaitSince ?? now
+        sharpnessWaitSince = since
+        guard now - since >= tunables.sharpnessWaitLimit else { return false }
+        log.debug(
+            "no sharper frame after \(self.tunables.sharpnessWaitLimit, privacy: .public)s; capturing anyway"
+        )
+        sharpnessWaitSince = nil
+        return true
     }
 
     /// The hold-still dwell: capture once the gates have passed on every frame for
@@ -362,7 +402,7 @@ final class DocumentCaptureModel<Output>: ObservableObject {
             let elapsed = Date().timeIntervalSince(start)
             holdProgress = min(1, elapsed / max(0.001, duration))
             guidance = .holdSteady
-            if elapsed >= duration {
+            if elapsed >= duration, sharpEnough(quality) {
                 log.debug("auto-capture after hold — \(Self.describe(quality), privacy: .public)")
                 return true
             }
@@ -375,6 +415,7 @@ final class DocumentCaptureModel<Output>: ObservableObject {
                 )
             }
             steadyStartedAt = nil
+            sharpnessWaitSince = nil
             holdProgress = 0
             guidance = hint
             return false
@@ -464,19 +505,29 @@ final class DocumentCaptureModel<Output>: ObservableObject {
 
     // MARK: - Manual-shutter timer
 
-    /// (Re)starts the countdown that reveals the manual shutter after the
-    /// auto-capture timeout. Kept off the analyzer so gating stays wall-clock-free.
+    /// (Re)starts a side's countdown to the manual shutter: `manualShutterCeiling`
+    /// at the latest, brought forward to `autoCaptureTimeout` after the document
+    /// first comes into view. Kept off the analyzer so gating stays wall-clock-free.
     private func startManualShutterTimer() {
-        manualShutterVisible = false
+        cancelManualShutterTimer()
+        documentSeenOnSide = false
+        scheduleManualShutter(in: tunables.manualShutterCeiling)
+    }
+
+    /// Shows the manual shutter after `delay`, unless it's already due sooner.
+    private func scheduleManualShutter(in delay: TimeInterval) {
+        guard !manualShutterVisible, !hasFinished else { return }
+        let deadline = Date().addingTimeInterval(delay)
+        if let shutterDeadline, shutterDeadline <= deadline { return }
+        shutterDeadline = deadline
         manualShutterTask?.cancel()
-        let timeout = tunables.autoCaptureTimeout
         manualShutterTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+            try? await Task.sleep(nanoseconds: UInt64(max(0, delay) * 1_000_000_000))
             guard !Task.isCancelled, let self else { return }
             self.manualShutterVisible = true
             let last = self.lastQuality.map(Self.describe) ?? "no frames analyzed"
             self.log.info(
-                "auto-capture timed out after \(timeout, privacy: .public)s — showing manual shutter. last: \(last, privacy: .public)"
+                "no auto-capture after \(delay, privacy: .public)s — showing manual shutter. last: \(last, privacy: .public)"
             )
         }
     }
@@ -484,6 +535,7 @@ final class DocumentCaptureModel<Output>: ObservableObject {
     private func cancelManualShutterTimer() {
         manualShutterTask?.cancel()
         manualShutterTask = nil
+        shutterDeadline = nil
         manualShutterVisible = false
     }
 

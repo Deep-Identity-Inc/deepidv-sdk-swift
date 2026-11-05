@@ -13,6 +13,11 @@ import Foundation
 /// probe that only beats the normal frames holds capture and asks the user to
 /// turn the card.
 ///
+/// A card the right way up that isn't confirmed for another reason (it's out of
+/// position, say) already scores well for its class, and its probe scores about
+/// the same, since some cards look much alike either way up. So a probe naming
+/// the class the normal frames name must beat them by `sameClassMargin`.
+///
 /// A probe's answer is never voted on or captured from. Pure and clock-free, as
 /// `ClassifierScanPolicy` is.
 package struct WrongWayDetector: Sendable, Equatable {
@@ -25,6 +30,8 @@ package struct WrongWayDetector: Sendable, Equatable {
     package static let probeMinConfidence = ClassifierVotes.namedFloor
     /// The best-guess confidence a probe needs to flip the scan.
     package static let flipMinConfidence = 0.75
+    /// How far a probe must beat the recent normal frames that name its own class.
+    package static let sameClassMargin = 0.15
     /// Probes in a row, naming the same class, that flip the scan.
     package static let flipProbes = 2
     /// The normal frames a probe is compared with: those of the last few seconds.
@@ -36,6 +43,14 @@ package struct WrongWayDetector: Sendable, Equatable {
     package struct Sample: Sendable, Equatable {
         package var time: TimeInterval
         package var confidence: Double
+        /// The best guess's class.
+        package var id: String?
+
+        package init(time: TimeInterval, confidence: Double, id: String? = nil) {
+            self.time = time
+            self.confidence = confidence
+            self.id = id
+        }
     }
 
     package struct Pending: Sendable, Equatable {
@@ -94,7 +109,7 @@ package struct WrongWayDetector: Sendable, Equatable {
             if stuckSince != nil || shown || pending != nil { self = WrongWayDetector() }
             return
         }
-        recent.append(Sample(time: now, confidence: reading.confidence))
+        recent.append(Sample(time: now, confidence: reading.confidence, id: reading.id))
         recent.removeAll { $0.time < now - Self.recentWindow }
         if stuckSince == nil { stuckSince = now }
     }
@@ -102,7 +117,17 @@ package struct WrongWayDetector: Sendable, Equatable {
     /// Whether a probe's answer clearly beats the normal frames.
     package func probeBeats(_ outcome: DetectOutcome) -> Bool {
         guard let reading = Reading(outcome) else { return false }
-        return reading.confidence >= Self.probeMinConfidence && reading.confidence > recentMean
+        return reading.confidence >= Self.probeMinConfidence && beatsRecent(reading)
+    }
+
+    /// Whether a probe's best guess beats the recent normal frames, by
+    /// `sameClassMargin` over those that name its class.
+    private func beatsRecent(_ reading: Reading) -> Bool {
+        guard reading.confidence > recentMean else { return false }
+        let same = recent.filter { $0.id != nil && $0.id == reading.id }
+        guard !same.isEmpty else { return true }
+        let mean = same.reduce(0) { $0 + $1.confidence } / Double(same.count)
+        return reading.confidence >= mean + Self.sameClassMargin - 1e-9
     }
 
     /// Whether a probe's answer is a known document the right way up, clearly
@@ -110,7 +135,7 @@ package struct WrongWayDetector: Sendable, Equatable {
     package func probeFlips(_ outcome: DetectOutcome) -> Bool {
         guard let reading = Reading(outcome), let id = reading.id else { return false }
         return DocumentClassCatalog.kind(of: id) != nil
-            && reading.confidence >= Self.flipMinConfidence && reading.confidence > recentMean
+            && reading.confidence >= Self.flipMinConfidence && beatsRecent(reading)
     }
 
     /// Records a probe's answer at `now`. A strong probe counts towards a flip for
