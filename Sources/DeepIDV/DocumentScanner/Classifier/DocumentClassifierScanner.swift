@@ -14,12 +14,13 @@ protocol DetectSending: Sendable {
 extension DetectClient: DetectSending {}
 
 /// Runs the document classifier alongside the on-device checks for one card
-/// front.
+/// front or passport photo page.
 ///
 /// The capture model offers it every frame. At most one call is in flight, at
 /// least half a second apart, with backoff after failures. Each answer steps the
-/// scan rules (`ClassifierScanPolicy`) and the upside-down check
-/// (`WrongWayDetector`). Meanwhile a few recent frames are kept as candidates for
+/// scan rules (`ClassifierScanPolicy`) and, on a card, the upside-down check
+/// (`WrongWayDetector`). The model has no passport class, so a passport page is
+/// never probed upside down: it is captured once good and steady. Meanwhile a few recent frames are kept as candidates for
 /// the photo.
 ///
 /// It can only ever hold capture back for a while, never block it: it switches
@@ -211,7 +212,7 @@ final class DocumentClassifierScanner: DocumentClassifying {
                 self.isActive
             else { return }
             self.handle(response, quality: quality, frameGood: frameGood, startedAt: startedAt)
-            if self.isActive, self.wrongWay.probeDue(at: self.clock()) {
+            if self.isActive, self.picked != .passport, self.wrongWay.probeDue(at: self.clock()) {
                 await self.probe(prepared)
             }
             if !Task.isCancelled { self.call = nil }

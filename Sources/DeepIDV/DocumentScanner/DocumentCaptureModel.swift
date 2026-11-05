@@ -67,7 +67,8 @@ final class DocumentCaptureModel<Output>: ObservableObject {
     private let tunables: DocumentCaptureTunables
     private let complete: CompleteOperation
     private let onResult: (Result<Output, DeepIDVError>) -> Void
-    /// The document classifier for card fronts, or `nil` for on-device checks only.
+    /// The document classifier for card fronts and passport pages, or `nil` for
+    /// on-device checks only.
     private let classifier: (any DocumentClassifying)?
     /// The session captures by the classifier's rules (ID capture v2): blur never
     /// holds a frame back on any side, and a back or a passport page is captured
@@ -226,8 +227,8 @@ final class DocumentCaptureModel<Output>: ObservableObject {
                 continue
             }
 
-            // The classifier only looks at card fronts: backs and passports skip it.
-            let sideClassifier = capturingBack || documentType == .passport ? nil : classifier
+            // The classifier looks at card fronts and passport pages: backs skip it.
+            let sideClassifier = capturingBack ? nil : classifier
             if !shouldCapture(frame, classifier: sideClassifier) { continue }
 
             // Lock acquired — grab a full-resolution still; fall back to the
@@ -350,11 +351,13 @@ final class DocumentCaptureModel<Output>: ObservableObject {
                 }
                 return false
             case .go:
-                return dwell(decision, quality, duration: tunables.classifierHoldDuration)
+                // A passport page has already been good for its steady time.
+                let hold = documentType == .passport ? 0 : tunables.classifierHoldDuration
+                return dwell(decision, quality, duration: hold)
             }
         }
         // A back or a passport page under the classifier's rules: once steady.
-        let steadyOnly = usesClassifierRules && classifier == nil
+        let steadyOnly = usesClassifierRules && (classifier == nil || documentType == .passport)
         return dwell(
             decision, quality,
             duration: steadyOnly ? tunables.steadyCaptureDuration : tunables.holdStillDuration)

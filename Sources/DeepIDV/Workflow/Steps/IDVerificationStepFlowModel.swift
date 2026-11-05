@@ -235,8 +235,6 @@ final class IDVerificationStepFlowModel: ObservableObject {
         phase = capturePhase(slot: slot, option: option)
     }
 
-    /// A classifier for a card front of `type`, or `nil` (passports, or the
-    /// classifier is off or unavailable for this session).
     /// Whether captures follow the classifier's rules (blur never holds a frame
     /// back; a back or a passport page is taken once steady): the classifier is
     /// set up and not ruled out for this session.
@@ -244,8 +242,10 @@ final class IDVerificationStepFlowModel: ObservableObject {
         classifierSetup.map { $0.availability.state != .unavailable } ?? false
     }
 
+    /// A classifier for the front or passport page of `type`, or `nil` when the
+    /// classifier is off or unavailable for this session.
     func classifier(for type: DocumentType) -> (any DocumentClassifying)? {
-        guard let classifierSetup, type != .passport,
+        guard let classifierSetup,
             classifierSetup.availability.state != .unavailable
         else { return nil }
         return classifierSetup.make(type, classifierSetup.availability)

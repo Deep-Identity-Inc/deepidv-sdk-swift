@@ -117,6 +117,10 @@ struct DocumentCaptureAnalyzer: Sendable {
 
     // MARK: - Aspect-ratio band
 
+    /// The shape Vision measures for an open passport booklet held up to the
+    /// camera, around the photo page.
+    static let openBooklet = 1.15
+
     /// Whether `ratio` (longer ÷ shorter side, ≥ 1) is within tolerance of the
     /// target shape for the selected document type.
     private func aspectMatches(_ ratio: Double) -> Bool {
@@ -129,11 +133,13 @@ struct DocumentCaptureAnalyzer: Sendable {
     /// to a capture flow, so in practice this is passport-or-card.
     /// - ID-1 (card / driver's licence / most national IDs): 85.6 × 53.98 mm ≈ 1.586
     /// - ID-3 (passport data page): 125 × 88 mm ≈ 1.42
+    /// - An open passport booklet, which is what Vision usually finds around the
+    ///   photo page: about 1.1–1.25 on a device front camera (``openBooklet``).
     static func aspectTargets(for type: DocumentType) -> [Double] {
         switch type {
-        case .passport: return [1.42]
+        case .passport: return [openBooklet, 1.42]
         case .idCard, .driversLicense: return [1.586]
-        case .auto: return [1.42, 1.586]
+        case .auto: return [openBooklet, 1.42, 1.586]
         }
     }
 }

@@ -7,12 +7,18 @@ import Foundation
 ///
 /// Pure and clock-free (the caller passes `now`, in seconds on any monotonic
 /// clock), so the rules are deterministic under test. Ported from the web
-/// capture with the same rules and numbers. Only card fronts are scanned: card
-/// backs and passports never reach the classifier.
+/// capture with the same rules and numbers. Card fronts and passport photo pages
+/// are scanned; card backs never reach the classifier.
+///
+/// The model has no passport class, so a passport page is captured as the web
+/// captures it: once the classifier has seen a good page for
+/// `passportCaptureDelay`, with no hold after.
 package struct ClassifierScanPolicy: Sendable {
     /// A well-framed card the classifier can't type is captured anyway once it has
     /// been good this long (plus `holdDuration`).
     package static let untypedCaptureDelay: TimeInterval = 5
+    /// A passport page is captured once it has been good this long, with no hold.
+    package static let passportCaptureDelay: TimeInterval = 1.5
     /// How long a capture is held, with the card staying good and the same type
     /// leading, before the photo is taken.
     package static let holdDuration: TimeInterval = 1.2
@@ -25,6 +31,8 @@ package struct ClassifierScanPolicy: Sendable {
         case typed
         case voted
         case untyped
+        /// A passport page, good for `passportCaptureDelay`.
+        case passport
     }
 
     /// A capture waiting out `holdDuration`: for which type (`nil` when untyped),
@@ -107,6 +115,9 @@ package struct ClassifierScanPolicy: Sendable {
         package var votes: [VoteEntry] = []
         /// The card looks upside down: no hold and no capture until that clears.
         package var wrongWay = false
+
+        /// A passport page is being scanned.
+        package var passport: Bool { picked == .passport }
     }
 
     // MARK: Running the scan
@@ -209,7 +220,9 @@ package struct ClassifierScanPolicy: Sendable {
 
     /// The photo is due: a hold has lasted `holdDuration`.
     package static func holdDue(_ state: State, now: TimeInterval) -> CaptureReason? {
-        guard let hold = state.hold, reached(now - hold.since, holdDuration) else { return nil }
+        guard let hold = state.hold else { return nil }
+        if hold.reason == .passport { return .passport }
+        guard reached(now - hold.since, holdDuration) else { return nil }
         return hold.reason
     }
 
@@ -353,7 +366,8 @@ package struct ClassifierScanPolicy: Sendable {
     }
 
     /// A good card with no type to capture by: captured once it has been good for
-    /// `untypedCaptureDelay`, unless a health card holds it.
+    /// `untypedCaptureDelay` (a passport page: `passportCaptureDelay`), unless a
+    /// health card holds it.
     private static func untypedStep(
         _ previous: State, decision: ScanDecision, context: Context, goodSince: TimeInterval,
         doc: ShownDoc?, mismatch: Mismatch?
@@ -365,8 +379,9 @@ package struct ClassifierScanPolicy: Sendable {
         }
         var step = base(state, mismatch == nil ? .identifying : .mismatch)
         let healthHold = context.health == .strict && healthLeads(context.votes)
-        let ready = !healthHold && reached(context.now - goodSince, untypedCaptureDelay)
-        step.capture = ready ? .untyped : nil
+        let delay = context.passport ? passportCaptureDelay : untypedCaptureDelay
+        let ready = !healthHold && reached(context.now - goodSince, delay)
+        step.capture = ready ? (context.passport ? .passport : .untyped) : nil
         step.mismatch = mismatch
         if step.chip == nil, mismatch == nil, let id = decision.doc?.id {
             step.chip = Chip(

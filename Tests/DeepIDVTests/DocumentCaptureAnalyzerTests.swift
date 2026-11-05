@@ -87,6 +87,18 @@ private func passingQuality(at center: CGPoint) -> CaptureQuality {
     #expect(analyzer.assess(passingQuality(for: .passport)) == nil)
 }
 
+@Test func anOpenPassportBookletIsFramedButNotForACard() {
+    // What Vision measured around an open booklet on an iPad front camera.
+    let passport = DocumentCaptureAnalyzer(documentType: .passport)
+    let card = DocumentCaptureAnalyzer(documentType: .driversLicense)
+    for aspect in [1.11, 1.19, 1.24] {
+        var booklet = passingQuality(for: .passport)
+        booklet.aspectRatio = aspect
+        #expect(passport.assess(booklet) == nil, "aspect \(aspect)")
+        #expect(card.assess(booklet) == .fitDocumentInFrame, "aspect \(aspect)")
+    }
+}
+
 @Test func autoTypeAcceptsBothPassportAndCardShapes() {
     let analyzer = DocumentCaptureAnalyzer(documentType: .auto)
     var passportShaped = passingQuality()
