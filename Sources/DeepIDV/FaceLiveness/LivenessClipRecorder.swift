@@ -143,7 +143,10 @@ final class LivenessClipRecorder: @unchecked Sendable {
                     input.markAsFinished()
                     writer.finishWriting { [weak self] in
                         guard let self else { return }
-                        let data = writer.status == .completed ? try? Data(contentsOf: self.outputURL) : nil
+                        // Read through `self`: the writer isn't Sendable, the recorder is.
+                        let data =
+                            self.writer?.status == .completed
+                            ? try? Data(contentsOf: self.outputURL) : nil
                         self.cleanup()
                         self.finishCont?.resume(returning: data)
                         self.finishCont = nil
