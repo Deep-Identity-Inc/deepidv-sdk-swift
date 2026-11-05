@@ -71,7 +71,7 @@ private func bytes(_ input: FileInput?) -> Data? { input.flatMap(ClassifierImage
 private func makeCapture(
     type: DocumentType, captureMode: CaptureMode? = nil, qualities: [CaptureQuality],
     classifier: FakeClassifier?, rules: Bool = false, sharpnessWaitLimit: TimeInterval = 0.8,
-    spy: CaptureSpy
+    sharpnessWindow: TimeInterval = 2, spy: CaptureSpy
 ) -> DocumentCaptureModel<Void> {
     DocumentCaptureModel(
         documentType: type,
@@ -83,7 +83,7 @@ private func makeCapture(
         tunables: .init(
             stabilityFrameCount: 2, holdStillDuration: 0, sideCapturedDisplay: 0,
             classifierHoldDuration: 0, steadyCaptureDuration: 0,
-            sharpnessWaitLimit: sharpnessWaitLimit),
+            sharpnessWindow: sharpnessWindow, sharpnessWaitLimit: sharpnessWaitLimit),
         classifier: classifier,
         usesClassifierRules: rules,
         onFrontCaptured: { spy.reports.append($0) },
@@ -172,7 +172,7 @@ private func makeCapture(
     let spy = CaptureSpy()
     let model = makeCapture(
         type: .idCard, captureMode: .frontOnly, qualities: [good, soft, soft, soft],
-        classifier: FakeClassifier(.go), sharpnessWaitLimit: 100, spy: spy)
+        classifier: FakeClassifier(.go), sharpnessWaitLimit: 100, sharpnessWindow: 100, spy: spy)
     await model.run()
     #expect(spy.completed.isEmpty)
     #expect(model.guidance == .holdSteady)
@@ -182,7 +182,7 @@ private func makeCapture(
     let spy = CaptureSpy()
     let model = makeCapture(
         type: .idCard, captureMode: .frontOnly, qualities: [good, soft, soft, good],
-        classifier: FakeClassifier(.go), sharpnessWaitLimit: 100, spy: spy)
+        classifier: FakeClassifier(.go), sharpnessWaitLimit: 100, sharpnessWindow: 100, spy: spy)
     await model.run()
     #expect(spy.completed.count == 1)
 }
@@ -191,7 +191,7 @@ private func makeCapture(
     let spy = CaptureSpy()
     let model = makeCapture(
         type: .idCard, captureMode: .frontOnly, qualities: [good, soft, soft],
-        classifier: FakeClassifier(.go), sharpnessWaitLimit: 0, spy: spy)
+        classifier: FakeClassifier(.go), sharpnessWaitLimit: 0, sharpnessWindow: 100, spy: spy)
     await model.run()
     #expect(spy.completed.count == 1)
 }
