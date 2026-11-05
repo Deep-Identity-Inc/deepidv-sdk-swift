@@ -11,9 +11,9 @@ enum IDVerificationDocumentSlot: Sendable, Equatable, Hashable {
 
     var title: String {
         switch self {
-        case .primary: return "primary ID"
-        case .secondary: return "secondary ID"
-        case .tertiary: return "tertiary ID"
+        case .primary: return L("primary ID")
+        case .secondary: return L("secondary ID")
+        case .tertiary: return L("tertiary ID")
         }
     }
 

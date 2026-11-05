@@ -234,8 +234,8 @@ enum CaptureLayout {
 
         private var accessibilityText: String {
             switch pill.style {
-            case .confirmed: return "\(pill.text), recognized"
-            case .pending: return "\(pill.text), checking"
+            case .confirmed: return L("%@, recognized", pill.text)
+            case .pending: return L("%@, checking", pill.text)
             default: return pill.text
             }
         }

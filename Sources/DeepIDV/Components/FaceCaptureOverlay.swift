@@ -141,14 +141,14 @@ struct FaceCaptureOverlay: View {
         VStack {
             HStack {
                 if let onCancel {
-                    CaptureLayout.RoundButton(symbol: "xmark", label: "Cancel", action: onCancel)
+                    CaptureLayout.RoundButton(symbol: "xmark", label: L("Cancel"), action: onCancel)
                 }
                 Spacer()
             }
             Spacer()
             if manualShutterVisible {
                 VStack(spacing: theme.spacing.sm + 2) {
-                    Text("Having trouble? Take the photo yourself")
+                    Text(L("Having trouble? Take the photo yourself"))
                         .font(theme.typography.body(size: 14).weight(.medium))
                         .foregroundStyle(theme.colors.grey.s50)
                         .padding(.horizontal, 14)
@@ -162,7 +162,7 @@ struct FaceCaptureOverlay: View {
                         }
                     }
                     .buttonStyle(CaptureLayout.PressStyle())
-                    .accessibilityLabel("Take photo")
+                    .accessibilityLabel(L("Take photo"))
                 }
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }

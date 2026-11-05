@@ -14,23 +14,23 @@ enum ReVerifyCopy {
     /// "Try again" is the model's `canRetry`, not decided here.
     static func message(for error: DeepIDVError) -> String {
         if error.code == "liveness_not_started" {
-            return "Your check didn't go through. Please try again."
+            return L("Your check didn't go through. Please try again.")
         }
         switch error.kind {
         case .network, .timeout:
-            return "We couldn't reach the server. Check your connection and try again."
+            return L("We couldn't reach the server. Check your connection and try again.")
         case .rateLimit, .serviceUnavailable, .api:
-            return "The service is busy right now. Please try again in a moment."
+            return L("The service is busy right now. Please try again in a moment.")
         case .captureFailed:
-            return "We couldn't capture your face. Please try again."
+            return L("We couldn't capture your face. Please try again.")
         case .cameraPermissionDenied:
-            return "Allow camera access in Settings to continue."
+            return L("Allow camera access in Settings to continue.")
         case .authentication:
-            return "Re-verification isn't set up correctly. Please contact support."
+            return L("Re-verification isn't set up correctly. Please contact support.")
         case .validation:
-            return "Something went wrong. Please contact support."
+            return L("Something went wrong. Please contact support.")
         default:
-            return "Something went wrong. Please try again."
+            return L("Something went wrong. Please try again.")
         }
     }
 }

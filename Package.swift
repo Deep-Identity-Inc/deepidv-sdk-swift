@@ -5,6 +5,9 @@ import PackageDescription
 
 let package = Package(
     name: "DeepIDV",
+    // On-screen text ships in English, Spanish and French (see
+    // `Sources/DeepIDV/Resources/*.lproj`).
+    defaultLocalization: "en",
     // The SDK ships iOS-only: the feature surface is camera/UIKit-bound, so
     // there is no macOS build.
     platforms: [
@@ -31,7 +34,7 @@ let package = Package(
             dependencies: ["DeepIDVCore"],
             // Apple privacy manifest for the whole SDK (DeepIDVCore ships inside
             // this product, so one manifest covers both targets).
-            resources: [.copy("PrivacyInfo.xcprivacy")]
+            resources: [.copy("PrivacyInfo.xcprivacy"), .process("Resources")]
         ),
         // ── One test target per source target. ───────────────────────────────
         .testTarget(

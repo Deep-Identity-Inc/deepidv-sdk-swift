@@ -33,13 +33,13 @@ struct ReVerifyFlowView: View {
     private var content: some View {
         switch model.phase {
         case .checking:
-            progressView("Getting ready", symbol: "faceid", message: "Next, a quick check that it's really you")
+            progressView(L("Getting ready"), symbol: "faceid", message: L("Next, a quick check that it's really you"))
         case .liveness(let session, let attemptsRemaining, let guidance):
             livenessView(session, attemptsRemaining: attemptsRemaining, guidance: guidance)
         case .uploading:
-            progressView("Sending your check", symbol: "arrow.up", message: "This only takes a moment")
+            progressView(L("Sending your check"), symbol: "arrow.up", message: L("This only takes a moment"))
         case .deciding:
-            progressView("Checking it's you", symbol: "checkmark.shield.fill", message: "This can take a few seconds")
+            progressView(L("Checking it's you"), symbol: "checkmark.shield.fill", message: L("This can take a few seconds"))
         case .failed(let error):
             failureView(error)
         case .outcome:
@@ -110,14 +110,14 @@ struct ReVerifyFlowView: View {
         case .initial:
             nil
         case .retryMismatch:
-            "We couldn't match your face — try again in good lighting, facing the camera"
+            L("We couldn't match your face — try again in good lighting, facing the camera")
         case .retryLiveness:
-            "The liveness check didn't pass — hold still and follow the prompts"
+            L("The liveness check didn't pass — hold still and follow the prompts")
         }
     }
 
     private static func attemptsText(_ count: Int) -> String {
-        count == 1 ? "1 attempt remaining" : "\(count) attempts remaining"
+        count == 1 ? L("1 attempt remaining") : L("%d attempts remaining", count)
     }
 
     // MARK: - Status screens
@@ -135,15 +135,15 @@ struct ReVerifyFlowView: View {
                 Group {
                     if model.canRetry {
                         Kit.StatusScreen(
-                            badge: .warning, title: "That didn't work",
+                            badge: .warning, title: L("That didn't work"),
                             message: ReVerifyCopy.message(for: error),
-                            primary: .init(title: "Try again", run: model.retry),
-                            secondary: .init(title: "Close", run: model.dismissFailure))
+                            primary: .init(title: L("Try again"), run: model.retry),
+                            secondary: .init(title: L("Close"), run: model.dismissFailure))
                     } else {
                         Kit.StatusScreen(
-                            badge: .warning, title: "We couldn't continue",
+                            badge: .warning, title: L("We couldn't continue"),
                             message: ReVerifyCopy.message(for: error),
-                            primary: .init(title: "Close", run: model.dismissFailure))
+                            primary: .init(title: L("Close"), run: model.dismissFailure))
                     }
                 }
                 .frame(minWidth: proxy.size.width, minHeight: proxy.size.height)

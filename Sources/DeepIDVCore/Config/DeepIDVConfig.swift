@@ -13,6 +13,14 @@ public enum DocumentCamera: String, Sendable, Equatable {
     case front
 }
 
+/// The language of the SDK's screens.
+@nonexhaustive
+public enum DeepIDVLanguage: String, Sendable, Equatable, CaseIterable {
+    case english = "en"
+    case spanish = "es"
+    case french = "fr"
+}
+
 /// Configuration for a DeepIDV client.
 public struct DeepIDVConfig: Sendable, Equatable {
     /// API key sent as the `x-api-key` header on every request
@@ -47,6 +55,10 @@ public struct DeepIDVConfig: Sendable, Equatable {
     /// own after a moment, or when tapped. Defaults to `true`; turn it off to
     /// go straight back to your app.
     public var showsCompletionScreen: Bool
+    /// The language of the SDK's screens. `nil` (the default) follows the
+    /// device: the first of the user's preferred languages the SDK has, or
+    /// English. Set it to match an app with its own language setting.
+    public var language: DeepIDVLanguage?
 
     public init(
         apiKey: String,
@@ -58,7 +70,8 @@ public struct DeepIDVConfig: Sendable, Equatable {
         documentCamera: DocumentCamera = .front,
         showsDocumentCaptureIntro: Bool = false,
         usesDocumentClassifier: Bool = true,
-        showsCompletionScreen: Bool = true
+        showsCompletionScreen: Bool = true,
+        language: DeepIDVLanguage? = nil
     ) {
         self.apiKey = apiKey
         self.baseURL = baseURL ?? Self.defaultBaseURL
@@ -70,6 +83,7 @@ public struct DeepIDVConfig: Sendable, Equatable {
         self.showsDocumentCaptureIntro = showsDocumentCaptureIntro
         self.usesDocumentClassifier = usesDocumentClassifier
         self.showsCompletionScreen = showsCompletionScreen
+        self.language = language
     }
 }
 

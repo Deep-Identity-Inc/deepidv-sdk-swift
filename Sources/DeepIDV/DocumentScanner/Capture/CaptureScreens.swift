@@ -291,17 +291,17 @@ enum CaptureScreens {
         let onDone: () -> Void
 
         private let tips: [(symbol: String, title: String, detail: String)] = [
-            ("sun.max.fill", "Find good light", "Bright, even light works best."),
-            ("sparkles", "Avoid glare", "Tilt your ID away from lamps and windows."),
-            ("viewfinder", "Fill the frame", "Hold your ID close so its edges line up with the frame."),
-            ("hand.raised.fill", "Hold still", "The photo is taken automatically once your ID is steady."),
-            ("camera.fill", "Still stuck?", "After a few seconds you can take the photo yourself."),
+            ("sun.max.fill", L("Find good light"), L("Bright, even light works best.")),
+            ("sparkles", L("Avoid glare"), L("Tilt your ID away from lamps and windows.")),
+            ("viewfinder", L("Fill the frame"), L("Hold your ID close so its edges line up with the frame.")),
+            ("hand.raised.fill", L("Hold still"), L("The photo is taken automatically once your ID is steady.")),
+            ("camera.fill", L("Still stuck?"), L("After a few seconds you can take the photo yourself.")),
         ]
 
         var body: some View {
             let palette = Palette(theme, scheme)
             VStack(alignment: .leading, spacing: theme.spacing.lg) {
-                Text("Tips for a quick scan")
+                Text(L("Tips for a quick scan"))
                     .font(theme.typography.heading(size: 24).weight(.semibold))
                     .foregroundStyle(palette.text)
                     .padding(.top, theme.spacing.lg)
@@ -325,7 +325,7 @@ enum CaptureScreens {
                     .accessibilityElement(children: .combine)
                 }
                 Spacer(minLength: 0)
-                PrimaryButton(title: "Got it", action: onDone)
+                PrimaryButton(title: L("Got it"), action: onDone)
             }
             .padding(theme.spacing.lg)
             .frame(maxWidth: 560)
@@ -339,7 +339,7 @@ enum CaptureScreens {
     struct Permission: View {
         @Environment(\.theme) private var theme
         /// What the camera is for: "scan your ID", "take a selfie".
-        var purpose = "scan your ID"
+        var purpose = L("scan your ID")
         let onOpenSettings: () -> Void
 
         var body: some View {
@@ -349,14 +349,14 @@ enum CaptureScreens {
                     .foregroundStyle(.white)
                     .frame(width: 72, height: 72)
                     .background(Circle().fill(Color.white.opacity(0.12)))
-                Text("Camera access is off")
+                Text(L("Camera access is off"))
                     .font(theme.typography.heading(size: 24).weight(.semibold))
                     .foregroundStyle(theme.colors.grey.s50)
-                Text("Allow camera access in Settings to \(purpose).")
+                Text(L("Allow camera access in Settings to %@.", purpose))
                     .font(theme.typography.body(size: 16))
                     .foregroundStyle(theme.colors.grey.s400)
                     .multilineTextAlignment(.center)
-                PrimaryButton(title: "Open Settings", action: onOpenSettings)
+                PrimaryButton(title: L("Open Settings"), action: onOpenSettings)
                     .frame(maxWidth: 320)
                     .padding(.top, theme.spacing.sm)
             }

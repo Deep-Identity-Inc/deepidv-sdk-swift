@@ -28,7 +28,7 @@ public struct DocumentTypePicker: View {
 
     public init(onSelect: @escaping (DocumentType) -> Void) {
         self.availableTypes = Self.pickableTypes
-        self.heading = "Which ID will you use?"
+        self.heading = L("Which ID will you use?")
         self.onCancel = nil
         self.onSelect = onSelect
     }
@@ -61,7 +61,7 @@ public struct DocumentTypePicker: View {
                         .overlay(Circle().strokeBorder(palette.cardLine, lineWidth: 1))
                 }
                 .buttonStyle(CaptureLayout.PressStyle())
-                .accessibilityLabel("Cancel")
+                .accessibilityLabel(L("Cancel"))
                 .padding(theme.spacing.md)
             }
         }
@@ -75,7 +75,7 @@ public struct DocumentTypePicker: View {
                 Text(heading)
                     .font(theme.typography.heading(size: 28).weight(.semibold))
                     .foregroundStyle(palette.text)
-                Text("Choose the document you have with you")
+                Text(L("Choose the document you have with you"))
                     .font(theme.typography.body(size: 16))
                     .foregroundStyle(palette.secondaryText)
             }
@@ -123,6 +123,9 @@ public struct DocumentTypePicker: View {
                         .font(theme.typography.body(size: 14))
                         .foregroundStyle(palette.secondaryText)
                 }
+                // Longer languages wrap instead of cutting off.
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: theme.spacing.sm)
                 Image(systemName: "chevron.right")
                     .font(.system(size: 15, weight: .semibold))
@@ -150,20 +153,20 @@ public struct DocumentTypePicker: View {
     /// A line under each type's name.
     nonisolated static func detail(for type: DocumentType) -> String {
         switch type {
-        case .passport: return "Scan the photo page"
-        case .idCard: return "Government-issued photo ID"
-        case .driversLicense: return "Issued by a province or state"
-        case .auto: return "Any photo ID"
+        case .passport: return L("Scan the photo page")
+        case .idCard: return L("Government-issued photo ID")
+        case .driversLicense: return L("Issued by a province or state")
+        case .auto: return L("Any photo ID")
         }
     }
 
     /// The user-facing label for each type.
     nonisolated static func title(for type: DocumentType) -> String {
         switch type {
-        case .passport: return "Passport"
-        case .idCard: return "ID card"
-        case .driversLicense: return "Driver's license"
-        case .auto: return "Automatic"
+        case .passport: return L("Passport")
+        case .idCard: return L("ID card")
+        case .driversLicense: return L("Driver's license")
+        case .auto: return L("Automatic")
         }
     }
 

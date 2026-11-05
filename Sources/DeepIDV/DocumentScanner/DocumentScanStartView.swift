@@ -29,10 +29,10 @@ struct DocumentScanStartView: View {
     /// onboarding.
     private static let pages: [IntroPage] = [
         IntroPage(
-            symbol: "person.text.rectangle", headline: "Place your valid ID inside the frame"),
-        IntroPage(symbol: "globe.americas.fill", headline: "Hold your phone steady"),
+            symbol: "person.text.rectangle", headline: L("Place your valid ID inside the frame")),
+        IntroPage(symbol: "globe.americas.fill", headline: L("Hold your phone steady")),
         IntroPage(
-            symbol: "doc.text.magnifyingglass", headline: "Make sure information is readable"),
+            symbol: "doc.text.magnifyingglass", headline: L("Make sure information is readable")),
     ]
 
     /// How long each page stays before the carousel advances to the next.
@@ -73,8 +73,8 @@ struct DocumentScanStartView: View {
             Spacer()
 
             VStack(spacing: theme.spacing.xs) {
-                Kit.PrimaryButton(title: "Continue", action: onStart)
-                Kit.SecondaryButton(title: "Skip", action: onStart)
+                Kit.PrimaryButton(title: L("Continue"), action: onStart)
+                Kit.SecondaryButton(title: L("Skip"), action: onStart)
             }
         }
         .padding(theme.spacing.lg)

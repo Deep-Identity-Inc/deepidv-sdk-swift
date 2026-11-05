@@ -94,23 +94,23 @@ struct CustomFaceLivenessFlowView: View {
 
     private var loadingView: some View {
         Kit.StatusScreen(
-            badge: .working(symbol: "faceid"), title: "Getting ready",
-            message: "Next, a quick check that it's really you", onClose: onCancel)
+            badge: .working(symbol: "faceid"), title: L("Getting ready"),
+            message: L("Next, a quick check that it's really you"), onClose: onCancel)
     }
 
     @ViewBuilder
     private func resultView(_ result: FaceLivenessResult) -> some View {
         if result.passed {
             Kit.StatusScreen(
-                badge: .success, title: "Liveness confirmed",
-                message: "Thanks, that's everything we need")
+                badge: .success, title: L("Liveness confirmed"),
+                message: L("Thanks, that's everything we need"))
         } else {
             Kit.StatusScreen(
-                badge: .retry, title: retryCopy?.title ?? "We couldn't verify you",
+                badge: .retry, title: retryCopy?.title ?? L("We couldn't verify you"),
                 message: retryCopy?.body
-                    ?? "Make sure your face is well lit and fills the oval, then try again.",
-                primary: .init(title: "Try again", run: model.retry),
-                secondary: onCancel.map { .init(title: "Cancel", run: $0) })
+                    ?? L("Make sure your face is well lit and fills the oval, then try again."),
+                primary: .init(title: L("Try again"), run: model.retry),
+                secondary: onCancel.map { .init(title: L("Cancel"), run: $0) })
         }
     }
 
@@ -118,13 +118,13 @@ struct CustomFaceLivenessFlowView: View {
         let copy = WorkflowFailureCopy.error(error)
         return Kit.StatusScreen(
             badge: .warning, title: copy.title, message: copy.body,
-            primary: .init(title: "Try again", run: model.retry),
-            secondary: onCancel.map { .init(title: "Cancel", run: $0) })
+            primary: .init(title: L("Try again"), run: model.retry),
+            secondary: onCancel.map { .init(title: L("Cancel"), run: $0) })
     }
 
     private var permissionDeniedView: some View {
         CaptureScreens.Permission(
-            purpose: "check that it's really you", onOpenSettings: openSettings)
+            purpose: L("check that it's really you"), onOpenSettings: openSettings)
     }
 
     // MARK: - Permission pre-check + start

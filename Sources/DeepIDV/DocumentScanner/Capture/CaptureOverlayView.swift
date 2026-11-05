@@ -176,7 +176,7 @@ struct CaptureOverlayView: View {
                         .opacity(showsProgress ? 1 : 0)
                 }
                 HStack {
-                    CaptureLayout.RoundButton(symbol: "xmark", label: "Cancel", action: onCancel)
+                    CaptureLayout.RoundButton(symbol: "xmark", label: L("Cancel"), action: onCancel)
                     Spacer()
                 }
             }
@@ -188,7 +188,7 @@ struct CaptureOverlayView: View {
                             .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                     CaptureLayout.RoundButton(
-                        symbol: "questionmark", label: "Help with scanning",
+                        symbol: "questionmark", label: L("Help with scanning"),
                         action: { showsHelp = true })
                 }
                 .frame(maxWidth: .infinity, alignment: .bottomTrailing)
@@ -213,7 +213,7 @@ struct CaptureOverlayView: View {
 
     private var shutter: some View {
         VStack(spacing: theme.spacing.sm + 2) {
-            Text("Having trouble? Take the photo yourself")
+            Text(L("Having trouble? Take the photo yourself"))
                 .font(theme.typography.body(size: 14).weight(.medium))
                 .foregroundStyle(theme.colors.grey.s50)
                 .padding(.horizontal, 14)
@@ -227,7 +227,7 @@ struct CaptureOverlayView: View {
                 }
             }
             .buttonStyle(CaptureLayout.PressStyle())
-            .accessibilityLabel("Take photo")
+            .accessibilityLabel(L("Take photo"))
         }
     }
 
@@ -249,9 +249,9 @@ struct CaptureOverlayView: View {
     private var pill: CaptureLayout.PillModel? {
         switch stage {
         case .wrongDocument(let kind):
-            return .init(text: DocumentClassCatalog.kindLabel(kind), style: .warning)
+            return .init(text: DocumentNames.title(kind), style: .warning)
         case .healthCard:
-            return .init(text: "Health card", style: .error)
+            return .init(text: L("Health card"), style: .error)
         case .findDocument, .adjust, .checking, .turnOver, .holdStill:
             guard let document, let label = document.label else { return nil }
             return .init(text: label, style: document.confirmed ? .confirmed : .pending)

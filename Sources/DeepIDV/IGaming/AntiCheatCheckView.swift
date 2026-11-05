@@ -86,14 +86,14 @@ struct AntiCheatFlowView: View {
 
         case .checking:
             Kit.StatusScreen(
-                badge: .working(symbol: "person.crop.square"), title: "Checking your photo",
-                message: "This only takes a moment")
+                badge: .working(symbol: "person.crop.square"), title: L("Checking your photo"),
+                message: L("This only takes a moment"))
 
         case .finished(let result):
             if result.isDuplicate {
-                Kit.StatusScreen(badge: .warning, title: "This face is already registered")
+                Kit.StatusScreen(badge: .warning, title: L("This face is already registered"))
             } else {
-                Kit.StatusScreen(badge: .success, title: "Check complete")
+                Kit.StatusScreen(badge: .success, title: L("Check complete"))
             }
 
         case .failed(let error):
@@ -104,13 +104,13 @@ struct AntiCheatFlowView: View {
                 // immediately deny again — offer the Settings deep-link first
                 // so the host isn't stuck in a loop with no way out.
                 Kit.StatusScreen(
-                    badge: .camera, title: "Camera access is off", message: copy.body,
-                    primary: .init(title: "Open Settings", run: openSettings),
-                    secondary: .init(title: "Try again", run: model.retry))
+                    badge: .camera, title: L("Camera access is off"), message: copy.body,
+                    primary: .init(title: L("Open Settings"), run: openSettings),
+                    secondary: .init(title: L("Try again"), run: model.retry))
             } else {
                 Kit.StatusScreen(
                     badge: .warning, title: copy.title, message: copy.body,
-                    primary: .init(title: "Try again", run: model.retry))
+                    primary: .init(title: L("Try again"), run: model.retry))
             }
         }
     }

@@ -25,9 +25,9 @@ struct SelfieCaptureOverlayView: View {
 
     var body: some View {
         if permissionDenied {
-            CaptureScreens.Permission(purpose: "take a selfie", onOpenSettings: onOpenSettings)
+            CaptureScreens.Permission(purpose: L("take a selfie"), onOpenSettings: onOpenSettings)
                 .overlay(alignment: .topLeading) {
-                    CaptureLayout.RoundButton(symbol: "xmark", label: "Cancel", action: onCancel)
+                    CaptureLayout.RoundButton(symbol: "xmark", label: L("Cancel"), action: onCancel)
                         .padding(.horizontal, 24)
                         .padding(.vertical, 16)
                 }
@@ -49,18 +49,18 @@ struct SelfieCaptureOverlayView: View {
     static func copy(
         guidance: SelfieGuidance?, captured: Bool, instruction: String
     ) -> CaptureCopy {
-        if captured { return .init(title: "Got it!", subtitle: "Your selfie was taken") }
+        if captured { return .init(title: L("Got it!"), subtitle: L("Your selfie was taken")) }
         switch guidance {
         case nil, .noFace?:
-            return .init(title: "Position your face in the oval", subtitle: instruction)
+            return .init(title: L("Position your face in the oval"), subtitle: instruction)
         case .multipleFaces?:
-            return .init(title: "Only your face, please", subtitle: "Make sure no one else is in view")
+            return .init(title: L("Only your face, please"), subtitle: L("Make sure no one else is in view"))
         case .moveCloser?:
-            return .init(title: "Move a little closer", subtitle: "Your face should fill the oval")
+            return .init(title: L("Move a little closer"), subtitle: L("Your face should fill the oval"))
         case .centerFace?:
-            return .init(title: "Center your face in the oval", subtitle: "Look straight at the screen")
+            return .init(title: L("Center your face in the oval"), subtitle: L("Look straight at the screen"))
         case .holdSteady?:
-            return .init(title: "Hold still…", subtitle: "Taking the photo")
+            return .init(title: L("Hold still…"), subtitle: L("Taking the photo"))
         }
     }
 
@@ -89,7 +89,7 @@ struct SelfieCaptureOverlayView: View {
 
 #Preview {
     SelfieCaptureOverlayView(
-        instruction: "The photo will be taken automatically",
+        instruction: L("The photo will be taken automatically"),
         guidance: .moveCloser,
         manualShutterVisible: true,
         permissionDenied: false

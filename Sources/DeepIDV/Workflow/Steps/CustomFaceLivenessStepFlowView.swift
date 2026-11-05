@@ -45,7 +45,7 @@ struct CustomFaceLivenessStepFlowView: View {
             if model.state == .syncing {
                 Kit.StatusScreen(
                     badge: .working(symbol: "checkmark.shield.fill"),
-                    title: "Checking your result", message: "This only takes a moment")
+                    title: L("Checking your result"), message: L("This only takes a moment"))
                     .transition(.opacity)
             }
         }

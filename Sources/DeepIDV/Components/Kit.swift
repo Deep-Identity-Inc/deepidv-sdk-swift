@@ -77,7 +77,7 @@ enum Kit {
     struct CloseButton: View {
         @Environment(\.theme) private var theme
         @Environment(\.colorScheme) private var scheme
-        var label = "Cancel"
+        var label = L("Cancel")
         let action: () -> Void
 
         var body: some View {

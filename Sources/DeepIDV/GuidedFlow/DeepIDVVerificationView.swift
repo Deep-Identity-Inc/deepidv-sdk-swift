@@ -113,10 +113,10 @@ struct VerificationFlowView: View {
         case .antiCheat:
             // Reuses the captured selfie — no second capture; just progress
             // chrome while the dedup/self-exclusion check runs.
-            FlowProgressView(text: "Checking your photo")
+            FlowProgressView(text: L("Checking your photo"))
 
         case .verifying:
-            FlowProgressView(text: "Verifying your identity")
+            FlowProgressView(text: L("Verifying your identity"))
         }
     }
 }
@@ -131,7 +131,7 @@ private struct FlowProgressView: View {
     var body: some View {
         Kit.StatusScreen(
             badge: .working(symbol: "checkmark.shield.fill"), title: text,
-            message: "This only takes a moment")
+            message: L("This only takes a moment"))
     }
 }
 

@@ -16,8 +16,8 @@ struct CompletionScreen: View {
     /// How long the screen stays before closing on its own.
     static let autoCloseAfter: TimeInterval = 3
 
-    var title = "Thanks, you're done"
-    var message = "We've received your details."
+    var title = L("Thanks, you're done")
+    var message = L("We've received your details.")
     let onDone: () -> Void
 
     @State private var ring = false
@@ -52,7 +52,7 @@ struct CompletionScreen: View {
             }
             Spacer()
             VStack(spacing: theme.spacing.sm) {
-                Kit.PrimaryButton(title: "Done", action: onDone)
+                Kit.PrimaryButton(title: L("Done"), action: onDone)
                 // Drains as the screen closes itself.
                 GeometryReader { geo in
                     Capsule().fill(palette.cardLine)

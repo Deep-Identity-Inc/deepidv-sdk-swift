@@ -75,7 +75,7 @@ struct IDVerificationStepFlowView: View {
                 DocumentTypePicker(
                     availableTypes: model.documentTypeOptions.map(\.documentType),
                     heading: slot == .primary
-                        ? "Which ID will you use?" : "Now choose your \(slot.title)",
+                        ? L("Which ID will you use?") : L("Now choose your %@", slot.title),
                     onCancel: model.cancel,
                     onSelect: model.selectDocumentType
                 )
@@ -138,9 +138,9 @@ struct IDVerificationStepFlowView: View {
         let copy = WorkflowFailureCopy.failure(failure, step: .idVerification)
         return Kit.StatusScreen(
             badge: .retry, title: copy.title, message: copy.body,
-            note: attemptsRemaining.map { $0 == 1 ? "1 attempt left" : "\($0) attempts left" },
-            primary: .init(title: "Try again", run: model.retry),
-            secondary: .init(title: "Cancel", run: model.cancel))
+            note: attemptsRemaining.map { $0 == 1 ? L("1 attempt left") : L("%d attempts left", $0) },
+            primary: .init(title: L("Try again"), run: model.retry),
+            secondary: .init(title: L("Cancel"), run: model.cancel))
     }
 }
 

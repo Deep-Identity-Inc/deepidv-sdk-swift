@@ -69,26 +69,26 @@ struct CaptureRunView: View {
         challenge: ChallengeType, centered: Bool, tooClose: Bool, flashing: Bool
     ) -> CaptureCopy {
         if flashing {
-            return .init(title: "Hold still", subtitle: "Keep looking at the screen")
+            return .init(title: L("Hold still"), subtitle: L("Keep looking at the screen"))
         }
         if centered {
             switch challenge {
             case .faceMovement:
-                return .init(title: "Slowly move closer", subtitle: "Keep your face inside the oval")
+                return .init(title: L("Slowly move closer"), subtitle: L("Keep your face inside the oval"))
             case .faceMovementAndLight:
-                return .init(title: "Hold still", subtitle: "The screen will flash a few colors")
+                return .init(title: L("Hold still"), subtitle: L("The screen will flash a few colors"))
             }
         }
         if tooClose {
-            return .init(title: "Move back a little", subtitle: "Your whole face should fit in the oval")
+            return .init(title: L("Move back a little"), subtitle: L("Your whole face should fit in the oval"))
         }
         switch challenge {
         case .faceMovement:
-            return .init(title: "Position your face in the oval", subtitle: "Look straight at the screen")
+            return .init(title: L("Position your face in the oval"), subtitle: L("Look straight at the screen"))
         case .faceMovementAndLight:
             return .init(
-                title: "Position your face in the oval",
-                subtitle: "Then hold still while the screen flashes colors")
+                title: L("Position your face in the oval"),
+                subtitle: L("Then hold still while the screen flashes colors"))
         }
     }
 

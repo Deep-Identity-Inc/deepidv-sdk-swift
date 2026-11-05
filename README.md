@@ -106,7 +106,8 @@ let config = DeepIDVConfig(
     uploadTimeout: 120,      // upload per-attempt seconds
     documentCamera: .front,   // the default; .back on a phone pointed at the ID
     showsDocumentCaptureIntro: false,  // the default; true shows a framing-tips intro before the camera
-    showsCompletionScreen: true        // the default; false skips the closing thank-you screen
+    showsCompletionScreen: true,       // the default; false skips the closing thank-you screen
+    language: nil                      // the default follows the device; or .english, .spanish, .french
 )
 let client = DeepIDVClient(config: config)
 ```

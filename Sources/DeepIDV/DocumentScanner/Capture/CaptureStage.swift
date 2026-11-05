@@ -82,30 +82,30 @@ enum CaptureStage: Sendable, Equatable {
     /// without one (the captured tick, the processing screen).
     var defaultText: String? {
         switch self {
-        case .findDocument: return "Point the camera at your document"
-        case .adjust(.turnToLandscape): return "Turn your card to landscape"
-        case .adjust(.moveCloser): return "Move closer"
-        case .adjust(.fitInFrame): return "Fit your document in the frame"
-        case .adjust(.reduceGlare): return "Tilt it away from the light to reduce glare"
-        case .checking: return "Checking your ID…"
-        case .turnOver: return "Your card is upside down. Turn it the right way up"
+        case .findDocument: return L("Point the camera at your document")
+        case .adjust(.turnToLandscape): return L("Turn your card to landscape")
+        case .adjust(.moveCloser): return L("Move closer")
+        case .adjust(.fitInFrame): return L("Fit your document in the frame")
+        case .adjust(.reduceGlare): return L("Tilt it away from the light to reduce glare")
+        case .checking: return L("Checking your ID…")
+        case .turnOver: return L("Your card is upside down. Turn it the right way up")
         case .wrongDocument(let kind):
-            return "This looks like \(Self.kindLabel(kind)). Is this the right document?"
-        case .healthCard: return "Health cards can't be used. Please use a different ID."
-        case .holdStill: return "Hold still"
+            return L("This looks like %@. Is this the right document?", Self.kindLabel(kind))
+        case .healthCard: return L("Health cards can't be used. Please use a different ID.")
+        case .holdStill: return L("Hold still")
         case .captured, .processing: return nil
-        case .flip: return "Now turn it over to scan the back"
+        case .flip: return L("Now turn it over to scan the back")
         }
     }
 
     /// A document kind in a sentence: "a driver's license", "an ID card".
     static func kindLabel(_ kind: DocumentClassKind) -> String {
         switch kind {
-        case .driversLicence: return "a driver's license"
-        case .idCard: return "an ID card"
-        case .healthCard: return "a health card"
-        case .federal: return "a government ID"
-        case .passport: return "a passport"
+        case .driversLicence: return L("a driver's license")
+        case .idCard: return L("an ID card")
+        case .healthCard: return L("a health card")
+        case .federal: return L("a government ID")
+        case .passport: return L("a passport")
         }
     }
 }

@@ -195,13 +195,13 @@ struct WorkflowFlowView: View {
     private var content: some View {
         switch model.phase {
         case .creating:
-            progressView("Preparing your verification", symbol: "lock.shield.fill")
+            progressView(L("Preparing your verification"), symbol: "lock.shield.fill")
         case .runningStep(let index):
             stepView(index: index)
         case .resyncing:
-            progressView("Picking up where you left off", symbol: "arrow.triangle.2.circlepath")
+            progressView(L("Picking up where you left off"), symbol: "arrow.triangle.2.circlepath")
         case .finishing:
-            progressView("Finishing up", symbol: "checkmark.shield.fill")
+            progressView(L("Finishing up"), symbol: "checkmark.shield.fill")
         case .failed(let error):
             entryErrorView(error)
         case .stepError(let error):
@@ -254,7 +254,7 @@ struct WorkflowFlowView: View {
     private func progressView(_ title: String, symbol: String) -> some View {
         Kit.StatusScreen(
             badge: .working(symbol: symbol), title: title,
-            message: "This only takes a moment", onClose: model.cancel
+            message: L("This only takes a moment"), onClose: model.cancel
         ) {
             Kit.SecureNote().padding(.top, theme.spacing.sm)
         }
@@ -265,7 +265,7 @@ struct WorkflowFlowView: View {
         // retrying can only fail the same way, so close is the only exit.
         let retry: (() -> Void)? = model.canRetryEntry ? { model.retryEntry() } : nil
         return WorkflowErrorView(
-            title: "We couldn't start verification",
+            title: L("We couldn't start verification"),
             message: WorkflowFailureCopy.error(error).body,
             onRetry: retry,
             onClose: { model.dismissFailure() })
@@ -298,12 +298,12 @@ private struct WorkflowErrorView: View {
         if let onRetry {
             Kit.StatusScreen(
                 badge: .warning, title: title, message: message,
-                primary: .init(title: "Try again", run: onRetry),
-                secondary: .init(title: "Close", run: onClose))
+                primary: .init(title: L("Try again"), run: onRetry),
+                secondary: .init(title: L("Close"), run: onClose))
         } else {
             Kit.StatusScreen(
                 badge: .warning, title: title, message: message,
-                primary: .init(title: "Close", run: onClose))
+                primary: .init(title: L("Close"), run: onClose))
         }
     }
 }

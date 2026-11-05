@@ -64,7 +64,7 @@ struct ShownDocument: Sendable, Equatable {
     var confirmed: Bool
 
     /// The name to show: "Ontario Driver's License".
-    var label: String? { DocumentClassCatalog.label(of: id) }
+    var label: String? { DocumentNames.label(of: id) }
 }
 
 /// Whether the classifier works for this session: unknown until its first

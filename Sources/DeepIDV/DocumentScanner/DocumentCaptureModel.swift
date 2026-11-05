@@ -210,12 +210,12 @@ final class DocumentCaptureModel<Output>: ObservableObject {
         switch phase {
         case .capturingFront:
             return captureMode == .frontOnly
-                ? "Position your document in the frame"
-                : "Scan the front of your document"
+                ? L("Position your document in the frame")
+                : L("Scan the front of your document")
         case .capturingBack:
-            return "Flip your document and scan the back"
+            return L("Flip your document and scan the back")
         case .processing:
-            return "Processing…"
+            return L("Processing…")
         }
     }
 
@@ -223,8 +223,8 @@ final class DocumentCaptureModel<Output>: ObservableObject {
     /// the pill disappears when there's nothing left to position.
     var sideLabel: String? {
         switch phase {
-        case .capturingFront: return "Front of your ID"
-        case .capturingBack: return "Back of your ID"
+        case .capturingFront: return L("Front of your ID")
+        case .capturingBack: return L("Back of your ID")
         case .processing: return nil
         }
     }

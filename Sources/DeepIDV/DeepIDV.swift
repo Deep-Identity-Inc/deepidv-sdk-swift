@@ -53,6 +53,8 @@ public struct DeepIDVClient: Sendable {
     package init(config: DeepIDVConfig, transport: any HTTPTransport) {
         self.config = config
         self.transport = transport
+        // The screens speak the language of the client created last.
+        Localization.use(config.language)
     }
 
     // MARK: - Headless flows

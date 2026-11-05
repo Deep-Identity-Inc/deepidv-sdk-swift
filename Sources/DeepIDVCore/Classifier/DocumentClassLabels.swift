@@ -8,20 +8,40 @@
 /// Built from the class id (`<country>_<region>_<kind>`), so a class added to the
 /// model later still gets a sensible name from its region and kind.
 extension DocumentClassCatalog {
-    /// The display name of a class, or `nil` for an id with no known kind.
+    /// The display name of a class, in English, or `nil` for an id with no
+    /// known kind.
     package static func label(of id: String) -> String? {
-        if let special = specialLabels[id] { return special }
+        guard let name = name(of: id) else { return nil }
+        switch name {
+        case .special(let label): return label
+        case .regional(let region, let kind): return "\(region) \(kindLabel(kind))"
+        case .kind(let kind): return kindLabel(kind)
+        }
+    }
+
+    /// A class's name in parts, so the screen can put it into any language.
+    package enum Name: Sendable, Equatable {
+        /// A name of its own: "UK Driving Licence".
+        case special(String)
+        /// A region and a kind: "Ontario" and a driver's license.
+        case regional(region: String, kind: DocumentClassKind)
+        /// Only the kind.
+        case kind(DocumentClassKind)
+    }
+
+    /// The parts of a class's name, or `nil` for an id with no known kind.
+    package static func name(of id: String) -> Name? {
+        if let special = specialLabels[id] { return .special(special) }
         guard let kind = kinds[id] else { return nil }
         let parts = id.split(separator: "_").map(String.init)
-        guard parts.count >= 2 else { return kindLabel(kind, country: nil) }
-        let country = parts[0]
-        let region = regionName(country: country, code: parts[1])
-        let noun = kindLabel(kind, country: country)
-        return region.map { "\($0) \(noun)" } ?? noun
+        guard parts.count >= 2,
+            let region = regionName(country: parts[0], code: parts[1])
+        else { return .kind(kind) }
+        return .regional(region: region, kind: kind)
     }
 
     /// The kind as a title: "Driver's License".
-    package static func kindLabel(_ kind: DocumentClassKind, country: String? = nil) -> String {
+    package static func kindLabel(_ kind: DocumentClassKind) -> String {
         switch kind {
         case .driversLicence: return "Driver's License"
         case .idCard: return "ID Card"

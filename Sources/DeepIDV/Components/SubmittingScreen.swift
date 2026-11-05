@@ -11,8 +11,8 @@ struct SubmittingScreen: View {
     @Environment(\.colorScheme) private var scheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    var title = "Verifying your identity"
-    var message = "Securely sending your photos"
+    var title = L("Verifying your identity")
+    var message = L("Securely sending your photos")
     let document: UIImage?
     let selfie: UIImage?
 

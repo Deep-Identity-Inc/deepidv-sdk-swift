@@ -42,6 +42,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DeepIDVWorkflowView`, `DeepIDVVerificationView` and `DocumentScannerView`
   take an optional `documentCamera:` that overrides
   `DeepIDVConfig.documentCamera` for that view.
+- The screens are in English, Spanish and French. They follow the device's
+  language (the first of the user's preferred languages the SDK has, or
+  English), or `DeepIDVConfig.language` (`.english`, `.spanish`, `.french`).
+  The SDK picks the language itself, so it works even when the app only
+  lists English.
 - Document capture turns Center Stage off on iPads that have it, so the
   camera doesn't reframe the card while it is photographed. The app's own
   setting is restored afterwards.

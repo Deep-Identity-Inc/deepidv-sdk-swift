@@ -104,7 +104,7 @@ final class SelfieCaptureModel: ObservableObject {
     }
 
     /// The framing instruction shown above the guide oval.
-    var instructionText: String { "Center your face in the circle" }
+    var instructionText: String { L("Center your face in the circle") }
 
     // MARK: - Capture loop
 
