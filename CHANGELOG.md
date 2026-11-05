@@ -42,6 +42,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `DeepIDVWorkflowView`, `DeepIDVVerificationView` and `DocumentScannerView`
   take an optional `documentCamera:` that overrides
   `DeepIDVConfig.documentCamera` for that view.
+- `.deepIDVAppearance(_:)` styles the SDK's screens with your brand: an
+  accent color, success / warning / error colors, a font family (and one for
+  titles), the corner radius of buttons and cards, and light or dark. Text on
+  a color you set turns black or white, whichever reads. The document frame
+  keeps its ID-card shape.
 - The screens are in English, Spanish and French. They follow the device's
   language (the first of the user's preferred languages the SDK has, or
   English), or `DeepIDVConfig.language` (`.english`, `.spanish`, `.french`).

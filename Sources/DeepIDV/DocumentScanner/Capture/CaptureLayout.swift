@@ -146,7 +146,7 @@ enum CaptureLayout {
                 Circle().fill(theme.colors.success)
                 Image(systemName: "checkmark")
                     .font(.system(size: size * 0.42, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(theme.colors.onSuccess)
             }
             .frame(width: size, height: size)
             .shadow(color: theme.colors.success.opacity(0.45), radius: 10, y: 3)

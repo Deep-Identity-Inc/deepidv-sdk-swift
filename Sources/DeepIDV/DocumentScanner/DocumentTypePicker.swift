@@ -133,17 +133,17 @@ public struct DocumentTypePicker: View {
             }
             .padding(theme.spacing.md)
             .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: theme.cardRadius, style: .continuous)
                     .fill(palette.card)
                     .shadow(color: .black.opacity(scheme == .dark ? 0 : 0.06), radius: 12, y: 4)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: theme.cardRadius, style: .continuous)
                     .strokeBorder(
                         selected == type ? theme.colors.primary : palette.cardLine,
                         lineWidth: selected == type ? 2 : 1)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: theme.cardRadius, style: .continuous))
         }
         .buttonStyle(CaptureLayout.PressStyle())
         .accessibilityElement(children: .combine)

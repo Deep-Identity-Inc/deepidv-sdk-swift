@@ -41,11 +41,11 @@ enum Kit {
             Button(action: action) {
                 Text(title)
                     .font(theme.typography.button(size: 17).weight(.semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(theme.colors.onPrimary)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 16)
                     .background(
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        RoundedRectangle(cornerRadius: theme.buttonRadius, style: .continuous)
                             .fill(theme.colors.primary))
             }
             .buttonStyle(PressStyle())
@@ -209,11 +209,11 @@ enum Kit {
             case .success:
                 SuccessBadge(size: 84)
             case .warning:
-                SymbolBadge(symbol: "exclamationmark", color: theme.colors.warning)
+                SymbolBadge(symbol: "exclamationmark", color: theme.colors.warning, ink: theme.colors.onWarning)
             case .retry:
-                SymbolBadge(symbol: "arrow.clockwise", color: theme.colors.primary)
+                SymbolBadge(symbol: "arrow.clockwise", color: theme.colors.primary, ink: theme.colors.onPrimary)
             case .camera:
-                SymbolBadge(symbol: "camera.fill", color: theme.colors.primary)
+                SymbolBadge(symbol: "camera.fill", color: theme.colors.primary, ink: theme.colors.onPrimary)
             }
         }
     }
@@ -275,7 +275,9 @@ enum Kit {
                     .scaleEffect(done ? 1 : 0.4)
                 TickShape()
                     .trim(from: 0, to: done ? 1 : 0)
-                    .stroke(.white, style: StrokeStyle(lineWidth: size * 0.075, lineCap: .round, lineJoin: .round))
+                    .stroke(
+                        theme.colors.onSuccess,
+                        style: StrokeStyle(lineWidth: size * 0.075, lineCap: .round, lineJoin: .round))
                     .frame(width: size * 0.42, height: size * 0.32)
             }
             .frame(width: size, height: size)
@@ -302,6 +304,8 @@ enum Kit {
         @Environment(\.accessibilityReduceMotion) private var reduceMotion
         let symbol: String
         let color: Color
+        /// The symbol's color on `color`.
+        var ink: Color = .white
         var size: CGFloat = 84
         @State private var shown = false
 
@@ -311,7 +315,7 @@ enum Kit {
                 Circle().fill(color).padding(size * 0.14)
                 Image(systemName: symbol)
                     .font(.system(size: size * 0.32, weight: .bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(ink)
             }
             .frame(width: size, height: size)
             .scaleEffect(shown || reduceMotion ? 1 : 0.6)

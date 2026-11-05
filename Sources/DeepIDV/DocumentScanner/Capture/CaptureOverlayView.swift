@@ -70,7 +70,12 @@ struct CaptureOverlayView: View {
         }
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: screen)
         .onChange(of: stage) { announce($0) }
-        .sheet(isPresented: $showsHelp) { CaptureScreens.Help(onDone: { showsHelp = false }) }
+        .sheet(isPresented: $showsHelp) {
+            // Passed on explicitly: older iOS doesn't carry custom environment
+            // values into a sheet.
+            CaptureScreens.Help(onDone: { showsHelp = false })
+                .environment(\.theme, theme)
+        }
     }
 
     // MARK: - Screens

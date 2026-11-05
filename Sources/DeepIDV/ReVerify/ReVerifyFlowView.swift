@@ -94,11 +94,11 @@ struct ReVerifyFlowView: View {
             .padding(.vertical, 12)
             .frame(maxWidth: Self.maxContentWidth)
             .background(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                RoundedRectangle(cornerRadius: theme.cardRadius, style: .continuous)
                     .fill(.ultraThinMaterial)
                     .environment(\.colorScheme, .dark)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        RoundedRectangle(cornerRadius: theme.cardRadius, style: .continuous)
                             .fill(Color.black.opacity(0.35))))
             .padding(theme.spacing.md)
             .accessibilityElement(children: .combine)

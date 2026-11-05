@@ -35,7 +35,9 @@ struct CompletionScreen: View {
                         .scaleEffect(ring ? 1.6 : 1)
                         .opacity(ring ? 0 : 1)
                         .accessibilityHidden(true)
-                    Kit.SymbolBadge(symbol: "paperplane.fill", color: theme.colors.primary, size: 112)
+                    Kit.SymbolBadge(
+                        symbol: "paperplane.fill", color: theme.colors.primary,
+                        ink: theme.colors.onPrimary, size: 112)
                 }
                 .frame(height: 180)
                 VStack(spacing: theme.spacing.sm) {

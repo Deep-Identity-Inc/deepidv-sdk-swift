@@ -49,7 +49,7 @@ struct SubmittingScreen: View {
     private func photos(document: UIImage, palette: Kit.Palette) -> some View {
         let width: CGFloat = 300
         let height = width / 1.586
-        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: theme.cardRadius, style: .continuous)
         return ZStack(alignment: .bottomTrailing) {
             Image(uiImage: document)
                 .resizable()
