@@ -22,7 +22,8 @@ private final class FakeClassifier: DocumentClassifying {
     }
 
     func observe(
-        _ frame: CameraFrame, quality: CaptureQuality, visionReady: Bool, at now: TimeInterval
+        _ frame: CameraFrame, quality: CaptureQuality, framed: Bool, visionReady: Bool,
+        at now: TimeInterval
     ) { observed += 1 }
 
     func verdict(at now: TimeInterval) -> ClassifierVerdict { verdict }
@@ -52,6 +53,10 @@ private struct Authorized: CameraAuthorizing {
 private let good = CaptureQuality(
     documentDetected: true, fillRatio: 0.72, aspectRatio: 1.586, sharpness: 300, glareRatio: 0)
 private let noDocument = CaptureQuality(documentDetected: false)
+/// In position and steady, but under the blur bar, as a legible card scores on an
+/// iPad front camera.
+private let soft = CaptureQuality(
+    documentDetected: true, fillRatio: 0.72, aspectRatio: 1.586, sharpness: 50, glareRatio: 0)
 
 @MainActor
 private final class CaptureSpy {
@@ -65,7 +70,7 @@ private func bytes(_ input: FileInput?) -> Data? { input.flatMap(ClassifierImage
 @MainActor
 private func makeCapture(
     type: DocumentType, captureMode: CaptureMode? = nil, qualities: [CaptureQuality],
-    classifier: FakeClassifier?, spy: CaptureSpy
+    classifier: FakeClassifier?, rules: Bool = false, spy: CaptureSpy
 ) -> DocumentCaptureModel<Void> {
     DocumentCaptureModel(
         documentType: type,
@@ -76,8 +81,9 @@ private func makeCapture(
         authorizer: Authorized(),
         tunables: .init(
             stabilityFrameCount: 2, holdStillDuration: 0, sideCapturedDisplay: 0,
-            classifierHoldDuration: 0),
+            classifierHoldDuration: 0, steadyCaptureDuration: 0),
         classifier: classifier,
+        usesClassifierRules: rules,
         onFrontCaptured: { spy.reports.append($0) },
         complete: { front, back, _ in spy.completed.append((front, back)) },
         onResult: { if case .failure(let error) = $0 { spy.failure = error } })
@@ -149,6 +155,58 @@ private func makeCapture(
     #expect(bytes(completed.front) == Data([0x4B, 0x01]), "the report's photo is uploaded")
     #expect(classifier.captures == [false])
     #expect(classifier.stopped)
+}
+
+@MainActor @Test func withTheClassifierInPlayBlurDoesNotHoldCaptureBack() async {
+    let spy = CaptureSpy()
+    let model = makeCapture(
+        type: .idCard, captureMode: .frontOnly, qualities: [soft, soft],
+        classifier: FakeClassifier(.go), spy: spy)
+    await model.run()
+    #expect(spy.completed.count == 1)
+}
+
+@MainActor @Test func withoutTheClassifierRulesTheBlurGateStands() async {
+    let spy = CaptureSpy()
+    let model = makeCapture(
+        type: .idCard, captureMode: .frontOnly, qualities: Array(repeating: soft, count: 6),
+        classifier: nil, spy: spy)
+    await model.run()
+    #expect(spy.completed.isEmpty)
+    #expect(model.guidance == .holdSteady)
+}
+
+@MainActor @Test func underTheClassifierRulesASoftBackIsCapturedOnceSteady() async throws {
+    let spy = CaptureSpy()
+    let model = makeCapture(
+        type: .idCard, qualities: [soft, soft, noDocument, soft, soft, soft],
+        classifier: FakeClassifier(.go), spy: spy)
+    await model.run()
+    let completed = try #require(spy.completed.first)
+    #expect(completed.1 != nil, "the back was captured")
+}
+
+@MainActor @Test func underTheClassifierRulesASoftPassportPageIsCapturedOnceSteady() async {
+    let spy = CaptureSpy()
+    let model = makeCapture(
+        type: .passport, qualities: [soft, soft], classifier: nil, rules: true, spy: spy)
+    await model.run()
+    #expect(spy.completed.count == 1)
+
+    let legacySpy = CaptureSpy()
+    let legacy = makeCapture(
+        type: .passport, qualities: Array(repeating: soft, count: 6), classifier: nil,
+        spy: legacySpy)
+    await legacy.run()
+    #expect(legacySpy.completed.isEmpty)
+}
+
+@MainActor @Test func theRulesFollowTheSessionsClassifier() async {
+    #expect(!makeStep(availability: nil, spy: StepSpy()).usesClassifierRules)
+    let availability = ClassifierAvailability()
+    #expect(makeStep(availability: availability, spy: StepSpy()).usesClassifierRules)
+    availability.record(.failure(DetectFailure(status: 403, reason: .unavailable)))
+    #expect(!makeStep(availability: availability, spy: StepSpy()).usesClassifierRules)
 }
 
 @MainActor @Test func cardBacksAndPassportsNeverReachTheClassifier() async {

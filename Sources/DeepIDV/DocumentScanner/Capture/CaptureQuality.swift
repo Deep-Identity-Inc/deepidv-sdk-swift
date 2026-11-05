@@ -143,6 +143,11 @@ struct DocumentCaptureTunables: Sendable, Equatable {
     /// before this side gives up on the classifier.
     var classifierWaitLimit: TimeInterval = 4
 
+    /// With the classifier's capture rules, a card back or a passport page (which
+    /// the classifier never sees) is captured once the on-device checks have held
+    /// this long, as on the web.
+    var steadyCaptureDuration: TimeInterval = 1.5
+
     // The compiler-synthesized memberwise initializer is used — every stored
     // property has a default, so `.init()` and `.init(stabilityFrameCount:)` both work.
 }

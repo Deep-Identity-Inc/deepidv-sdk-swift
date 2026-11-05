@@ -65,6 +65,7 @@ struct DocumentCaptureFlowView<Output>: View {
         cameraPosition: AVCaptureDevice.Position = .back,
         showsIntro: Bool = true,
         makeClassifier: (() -> (any DocumentClassifying)?)? = nil,
+        usesClassifierRules: Bool = false,
         onFrontCaptured: ((FrontCaptureReport) -> Void)? = nil,
         complete: @escaping DocumentCaptureModel<Output>.CompleteOperation,
         onResult: @escaping (Result<Output, DeepIDVError>) -> Void
@@ -81,6 +82,7 @@ struct DocumentCaptureFlowView<Output>: View {
                 encoder: DocumentStillEncoder(),
                 authorizer: SystemCameraAuthorizer(),
                 classifier: makeClassifier?(),
+                usesClassifierRules: usesClassifierRules,
                 onFrontCaptured: onFrontCaptured,
                 complete: complete,
                 onResult: onResult))
@@ -144,12 +146,14 @@ struct CameraPreviewView: UIViewRepresentable {
         let view = PreviewView()
         view.previewLayer.videoGravity = .resizeAspectFill
         view.previewLayer.session = session
+        view.configure = configure
         configure(view.previewLayer)
         return view
     }
 
     func updateUIView(_ uiView: PreviewView, context: Context) {
         uiView.previewLayer.session = session
+        uiView.configure = configure
         configure(uiView.previewLayer)
     }
 
@@ -171,10 +175,37 @@ struct CameraPreviewView: UIViewRepresentable {
 
     /// A `UIView` whose backing layer *is* the preview layer, so it resizes
     /// with the view automatically.
+    ///
+    /// The layer's connection only exists once the session has its camera, which
+    /// can be after SwiftUI last updated the view, so the mirroring and rotation
+    /// are applied again when the session starts and on every layout.
     final class PreviewView: UIView {
         override class var layerClass: AnyClass { AVCaptureVideoPreviewLayer.self }
         var previewLayer: AVCaptureVideoPreviewLayer {
             layer as! AVCaptureVideoPreviewLayer
+        }
+        var configure: ((AVCaptureVideoPreviewLayer) -> Void)?
+        // Written once in init, read once in deinit.
+        nonisolated(unsafe) private var started: NSObjectProtocol?
+
+        override init(frame: CGRect) {
+            super.init(frame: frame)
+            started = NotificationCenter.default.addObserver(
+                forName: AVCaptureSession.didStartRunningNotification, object: nil, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.setNeedsLayout() }
+            }
+        }
+
+        required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+        deinit {
+            if let started { NotificationCenter.default.removeObserver(started) }
+        }
+
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            configure?(previewLayer)
         }
     }
 }

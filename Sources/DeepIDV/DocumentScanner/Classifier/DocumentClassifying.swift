@@ -35,9 +35,12 @@ struct FrontCaptureReport: Sendable {
 /// inside the implementation, off the main actor.
 @MainActor
 protocol DocumentClassifying: AnyObject {
-    /// Called on every frame of the front.
+    /// Called on every frame of the front. `framed`: the card is in position (seen,
+    /// close enough, the right shape, no glare), which is what lets an answer vote.
+    /// `visionReady`: every on-device gate passed, steadiness and sharpness too.
     func observe(
-        _ frame: CameraFrame, quality: CaptureQuality, visionReady: Bool, at now: TimeInterval)
+        _ frame: CameraFrame, quality: CaptureQuality, framed: Bool, visionReady: Bool,
+        at now: TimeInterval)
     /// The classifier's say at `now`.
     func verdict(at now: TimeInterval) -> ClassifierVerdict
     /// The front photo was taken.

@@ -237,6 +237,13 @@ final class IDVerificationStepFlowModel: ObservableObject {
 
     /// A classifier for a card front of `type`, or `nil` (passports, or the
     /// classifier is off or unavailable for this session).
+    /// Whether captures follow the classifier's rules (blur never holds a frame
+    /// back; a back or a passport page is taken once steady): the classifier is
+    /// set up and not ruled out for this session.
+    var usesClassifierRules: Bool {
+        classifierSetup.map { $0.availability.state != .unavailable } ?? false
+    }
+
     func classifier(for type: DocumentType) -> (any DocumentClassifying)? {
         guard let classifierSetup, type != .passport,
             classifierSetup.availability.state != .unavailable

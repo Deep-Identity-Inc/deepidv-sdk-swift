@@ -69,6 +69,10 @@ final class DocumentCaptureModel<Output>: ObservableObject {
     private let onResult: (Result<Output, DeepIDVError>) -> Void
     /// The document classifier for card fronts, or `nil` for on-device checks only.
     private let classifier: (any DocumentClassifying)?
+    /// The session captures by the classifier's rules (ID capture v2): blur never
+    /// holds a frame back on any side, and a back or a passport page is captured
+    /// once steady for `steadyCaptureDuration`.
+    private let usesClassifierRules: Bool
     /// Told about every front photo, with what the classifier made of it.
     private let onFrontCaptured: ((FrontCaptureReport) -> Void)?
     /// The classifier's clock (seconds, monotonic).
@@ -104,6 +108,7 @@ final class DocumentCaptureModel<Output>: ObservableObject {
         authorizer: any CameraAuthorizing = AlwaysAuthorizedCamera(),
         tunables: DocumentCaptureTunables = .init(),
         classifier: (any DocumentClassifying)? = nil,
+        usesClassifierRules: Bool = false,
         onFrontCaptured: ((FrontCaptureReport) -> Void)? = nil,
         clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
         complete: @escaping CompleteOperation,
@@ -120,6 +125,7 @@ final class DocumentCaptureModel<Output>: ObservableObject {
         self.complete = complete
         self.onResult = onResult
         self.classifier = classifier
+        self.usesClassifierRules = usesClassifierRules || classifier != nil
         self.onFrontCaptured = onFrontCaptured
         self.clock = clock
     }
@@ -301,10 +307,14 @@ final class DocumentCaptureModel<Output>: ObservableObject {
         lastCaptureWasManual = false
         let quality = evaluator.quality(of: frame, for: documentType)
         lastQuality = quality
-        let decision = analyzer.evaluate(quality)
+        let now = clock()
+        // With the classifier's rules, blur only shapes which frame becomes the
+        // photo; without them, the blur gate stands as before.
+        let decision = analyzer.evaluate(quality, checksSharpness: !usesClassifierRules)
         if let classifier {
-            let now = clock()
-            classifier.observe(frame, quality: quality, visionReady: decision == .capture, at: now)
+            classifier.observe(
+                frame, quality: quality, framed: analyzer.isFramed(quality),
+                visionReady: decision == .capture, at: now)
             switch classifier.verdict(at: now) {
             case .off:
                 break
@@ -325,7 +335,11 @@ final class DocumentCaptureModel<Output>: ObservableObject {
                 return dwell(decision, quality, duration: tunables.classifierHoldDuration)
             }
         }
-        return dwell(decision, quality, duration: tunables.holdStillDuration)
+        // A back or a passport page under the classifier's rules: once steady.
+        let steadyOnly = usesClassifierRules && classifier == nil
+        return dwell(
+            decision, quality,
+            duration: steadyOnly ? tunables.steadyCaptureDuration : tunables.holdStillDuration)
     }
 
     private func resetDwell() {

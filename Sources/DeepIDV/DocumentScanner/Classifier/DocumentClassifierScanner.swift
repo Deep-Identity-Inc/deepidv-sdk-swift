@@ -93,7 +93,8 @@ final class DocumentClassifierScanner: DocumentClassifying {
     // MARK: DocumentClassifying
 
     func observe(
-        _ frame: CameraFrame, quality: CaptureQuality, visionReady: Bool, at now: TimeInterval
+        _ frame: CameraFrame, quality: CaptureQuality, framed: Bool, visionReady: Bool,
+        at now: TimeInterval
     ) {
         guard isActive else { return }
         if visionReady {
@@ -110,7 +111,7 @@ final class DocumentClassifierScanner: DocumentClassifying {
         }
         keep(frame, quality: quality, at: now)
         if call == nil, now >= nextCallAt {
-            send(frame, quality: quality, frameGood: visionReady, at: now)
+            send(frame, quality: quality, frameGood: framed, at: now)
         }
     }
 

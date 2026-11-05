@@ -102,12 +102,12 @@ private func makeScanner(
 @MainActor
 private func run(
     _ scanner: DocumentClassifierScanner, clock: ManualClock, frames: Int, step: TimeInterval = 0.5,
-    quality: CaptureQuality = good, visionReady: Bool = true
+    quality: CaptureQuality = good, framed: Bool? = nil, visionReady: Bool = true
 ) async {
     for i in 0..<frames {
         scanner.observe(
             CameraFrame(index: i, syntheticQuality: quality), quality: quality,
-            visionReady: visionReady, at: clock.now)
+            framed: framed ?? visionReady, visionReady: visionReady, at: clock.now)
         await scanner.settle()
         clock.now += step
     }
@@ -157,6 +157,22 @@ private func run(
     #expect(classification.captureRotation == 0)
     #expect(classification.frames.count == 2)
     #expect(report.extraFrames.isEmpty, "extra frames are off by default")
+}
+
+@MainActor @Test func answersOnAFramedButUnsteadyCardStillVote() async {
+    // A handheld card is rarely steady or crisp when a frame goes out: the answer
+    // still counts when the card is in position, as on the web.
+    let clock = ManualClock()
+    let scanner = makeScanner(ScriptedDetector { _, _ in card("ca_on_dl", 0.8) }, clock: clock)
+    await run(scanner, clock: clock, frames: 2, framed: true, visionReady: false)
+    #expect(scanner.verdict(at: clock.now) == .go)
+}
+
+@MainActor @Test func answersOnACardOutOfPositionDoNotVote() async {
+    let clock = ManualClock()
+    let scanner = makeScanner(ScriptedDetector { _, _ in card("ca_on_dl", 0.8) }, clock: clock)
+    await run(scanner, clock: clock, frames: 2, framed: false, visionReady: false)
+    #expect(scanner.verdict(at: clock.now) != .go)
 }
 
 @MainActor @Test func aManualPhotoIsReportedAsManual() async {
@@ -226,7 +242,7 @@ private func run(
     let scanner = makeScanner(SilentDetector(), clock: clock)
     for i in 0...9 {
         scanner.observe(
-            CameraFrame(index: i, syntheticQuality: good), quality: good, visionReady: true,
+            CameraFrame(index: i, syntheticQuality: good), quality: good, framed: true, visionReady: true,
             at: clock.now)
         clock.now += 0.5
     }
@@ -239,7 +255,7 @@ private func run(
     let scanner = makeScanner(SilentDetector(), clock: clock)
     for i in 0...9 {
         scanner.observe(
-            CameraFrame(index: i, syntheticQuality: good), quality: good, visionReady: i % 3 != 0,
+            CameraFrame(index: i, syntheticQuality: good), quality: good, framed: i % 3 != 0, visionReady: i % 3 != 0,
             at: clock.now)
         clock.now += 0.5
     }

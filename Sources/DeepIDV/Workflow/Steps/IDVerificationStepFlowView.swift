@@ -88,6 +88,7 @@ struct IDVerificationStepFlowView: View {
                 cameraPosition: documentCamera.avPosition,
                 showsIntro: showsIntro,
                 makeClassifier: { model.classifier(for: type) },
+                usesClassifierRules: model.usesClassifierRules,
                 onFrontCaptured: { model.frontCaptured($0, slot: slot) },
                 complete: { front, back, _ in (front, back) },
                 onResult: { result in
