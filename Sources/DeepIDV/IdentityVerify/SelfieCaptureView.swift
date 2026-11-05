@@ -54,10 +54,11 @@ struct SelfieCaptureFlowView: View {
             SelfieCaptureOverlayView(
                 instruction: faceFrontPhotoOnly == true
                     ? "Look straight at the camera"
-                    : model.instructionText,
+                    : "The photo will be taken automatically",
                 guidance: model.guidance,
                 manualShutterVisible: model.manualShutterVisible,
                 permissionDenied: model.permissionDenied,
+                capturedImage: model.capturedImage,
                 onManualCapture: { model.triggerManualCapture() },
                 onCancel: { model.cancel() },
                 onOpenSettings: openSettings)

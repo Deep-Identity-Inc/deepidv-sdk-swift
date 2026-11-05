@@ -105,10 +105,10 @@ struct VerificationFlowView: View {
         case .antiCheat:
             // Reuses the captured selfie — no second capture; just progress
             // chrome while the dedup/self-exclusion check runs.
-            FlowProgressView(text: "Checking your photo…")
+            FlowProgressView(text: "Checking your photo")
 
         case .verifying:
-            FlowProgressView(text: "Verifying your identity…")
+            FlowProgressView(text: "Verifying your identity")
         }
     }
 }
@@ -118,19 +118,12 @@ struct VerificationFlowView: View {
 /// which reuses the captured selfie, so there is nothing to show but
 /// progress).
 private struct FlowProgressView: View {
-    @Environment(\.theme) private var theme
-
     let text: String
 
     var body: some View {
-        VStack(spacing: theme.spacing.md) {
-            ProgressView()
-            Text(text)
-                .font(theme.typography.body())
-                .foregroundStyle(theme.colors.grey.s700)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(theme.colors.grey.s50)
+        Kit.StatusScreen(
+            badge: .working(symbol: "checkmark.shield.fill"), title: text,
+            message: "This only takes a moment")
     }
 }
 

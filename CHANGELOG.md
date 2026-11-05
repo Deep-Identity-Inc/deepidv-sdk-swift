@@ -24,6 +24,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   name on the frame ("Ontario Driver's Licence"), a turn-it-over screen for
   documents with a back, a done screen, a tips sheet and VoiceOver
   announcements with haptics. Light and dark appearance follow the system.
+- The selfie and face-liveness screens match it: a frosted surround with an
+  oval, the instruction above, an oval that changes color as the face settles,
+  a ring that fills through the liveness check, a heads-up before the screen
+  flashes colours, and the selfie frozen with a tick once taken.
+- Every wait, result and error screen shares one design, in light and dark:
+  preparing, submitting (with the ID and selfie just taken), try again, errors,
+  camera access, and the liveness result.
+- A workflow run that is submitted ends on a short "You're all set" screen,
+  which closes on its own after 3 s or when tapped, then reports the result.
+  `DeepIDVConfig.showsCompletionScreen` (default `true`) turns it off.
 - The auto-capture "close enough" check follows the frame drawn on screen, so
   a card that fills the frame is always close enough.
 
@@ -33,6 +43,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   kiosks and tablets. Pass `.back` to keep the rear camera on a phone.
 - **Behavior:** `DeepIDVConfig.showsDocumentCaptureIntro` now defaults to
   `false`. Pass `true` to keep the intro screen.
+- **Behavior:** the submitting screen no longer offers Cancel while photos
+  are being sent.
 - The upside-down check runs beside the normal reads instead of before them,
   so it no longer slows down capturing a card held the right way up.
 - The document-type picker is skipped when the workflow allows only one

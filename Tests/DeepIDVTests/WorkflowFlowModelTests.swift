@@ -1026,6 +1026,8 @@ func exhaustedRunResultCarriesSessionFailure() async {
         sessionFailure: exhaustedSessionFailure)
     let spy = WorkflowResultSpy()
     let model = makeModel(session: singleIDSession(), state: failedState, resultSpy: spy)
+    // A failed session never shows "You're all set".
+    model.showsCompletion = true
 
     model.start()
     await model.awaitPendingWork()
@@ -1278,4 +1280,62 @@ func conflictDuringAResumedRunUsesTheExistingResync() async {
     #expect(states.calls == 1)
     #expect(model.phase == .runningStep(index: 1))
     #expect(spy.results.isEmpty)
+}
+
+// MARK: - "You're all set"
+
+@MainActor
+private func runToSubmitted(showsCompletion: Bool, spy: WorkflowResultSpy) async
+    -> WorkflowFlowModel
+{
+    let session = WorkflowSession(
+        sessionID: "sess-1", expiresAt: nil,
+        steps: [plan(.idVerification, requirements: idRequirements())], currentStep: 0)
+    let model = makeModel(session: session, resultSpy: spy)
+    model.showsCompletion = showsCompletion
+    model.start()
+    await model.awaitPendingWork()
+    model.stepCompleted(
+        WorkflowStepOutcome(
+            stepID: .idVerification, stepStatus: .completed, failure: nil, currentStep: nil,
+            attemptsRemaining: 2, sessionStatus: .submitted, sessionProgress: .completed))
+    await model.awaitPendingWork()
+    return model
+}
+
+@MainActor @Test
+func aSubmittedRunShowsAllSetBeforeReporting() async {
+    let spy = WorkflowResultSpy()
+    let model = await runToSubmitted(showsCompletion: true, spy: spy)
+
+    guard case .complete(let run) = model.phase else {
+        Issue.record("expected the completion screen, got \(model.phase)")
+        return
+    }
+    #expect(run.sessionID == "sess-1")
+    #expect(spy.results.isEmpty, "the result waits for the screen to close")
+
+    model.completionDismissed()
+    model.completionDismissed()
+    #expect(model.phase == .finished)
+    #expect(spy.results.count == 1, "reported once")
+    #expect(spy.value?.sessionID == "sess-1")
+}
+
+@MainActor @Test
+func leavingTheAllSetScreenStillReportsTheRun() async {
+    let spy = WorkflowResultSpy()
+    let model = await runToSubmitted(showsCompletion: true, spy: spy)
+
+    model.cancel()  // the host dismissed the view
+    #expect(spy.results.count == 1)
+    #expect(spy.value?.sessionID == "sess-1", "a success, not a cancel")
+}
+
+@MainActor @Test
+func withoutTheAllSetScreenTheRunReportsAtOnce() async {
+    let spy = WorkflowResultSpy()
+    let model = await runToSubmitted(showsCompletion: false, spy: spy)
+    #expect(model.phase == .finished)
+    #expect(spy.results.count == 1)
 }

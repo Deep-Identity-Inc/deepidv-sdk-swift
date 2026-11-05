@@ -205,7 +205,8 @@ final class CustomLivenessCaptureController: ObservableObject {
         frames: inout [Data], timeline: inout [TimelineEntry], startedAt: Date
     ) async throws {
         let phaseStart = Date()
-        for step in script.steps where step.kind == "color" {
+        let colors = script.steps.filter { $0.kind == "color" && $0.color != nil }
+        for (index, step) in colors.enumerated() {
             guard let color = step.color else { continue }
             // Wait until this color's scheduled offset, then show it.
             let target = phaseStart.addingTimeInterval(Double(step.atMs) / 1000)
@@ -218,6 +219,7 @@ final class CustomLivenessCaptureController: ObservableObject {
                     index: frames.count, atMs: msSince(startedAt), kind: "color", value: color))
                 frames.append(data)
             }
+            progress = Double(index + 1) / Double(colors.count)
         }
         activeColor = nil
     }

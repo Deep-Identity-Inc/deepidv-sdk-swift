@@ -40,6 +40,11 @@ public struct DeepIDVConfig: Sendable, Equatable {
     /// upside down and hold off on health cards. Defaults to `true`. With it off,
     /// or when the classifier isn't available, capture uses on-device checks only.
     public var usesDocumentClassifier: Bool
+    /// Whether a workflow run that is submitted ends on a short "You're all set"
+    /// screen before ``DeepIDVWorkflowView`` reports its result. It closes on
+    /// its own after a moment, or when tapped. Defaults to `true`; turn it off
+    /// to go straight back to your app.
+    public var showsCompletionScreen: Bool
 
     public init(
         apiKey: String,
@@ -50,7 +55,8 @@ public struct DeepIDVConfig: Sendable, Equatable {
         uploadTimeout: TimeInterval? = nil,
         documentCamera: DocumentCamera = .front,
         showsDocumentCaptureIntro: Bool = false,
-        usesDocumentClassifier: Bool = true
+        usesDocumentClassifier: Bool = true,
+        showsCompletionScreen: Bool = true
     ) {
         self.apiKey = apiKey
         self.baseURL = baseURL ?? Self.defaultBaseURL
@@ -61,6 +67,7 @@ public struct DeepIDVConfig: Sendable, Equatable {
         self.documentCamera = documentCamera
         self.showsDocumentCaptureIntro = showsDocumentCaptureIntro
         self.usesDocumentClassifier = usesDocumentClassifier
+        self.showsCompletionScreen = showsCompletionScreen
     }
 }
 

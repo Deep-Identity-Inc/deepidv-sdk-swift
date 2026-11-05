@@ -177,3 +177,52 @@ private let settle = CaptureStagePresenter.settle
         widthShare: 0.8, screenAspect: 393.0 / 852.0, frameAspect: 3.0 / 4.0, share: 1)
     #expect(abs(fill - 0.8 * (393.0 / 852.0) / 0.75) < 1e-9)
 }
+
+// MARK: - Face screens
+
+@Test func theLivenessWordsFollowTheCheck() {
+    let light = ChallengeType.faceMovementAndLight
+    #expect(
+        CaptureRunView.copy(challenge: light, centered: false, tooClose: false, flashing: false)
+            .subtitle?.contains("flashes") == true, "the light check is announced before it starts")
+    #expect(
+        CaptureRunView.copy(challenge: .faceMovement, centered: false, tooClose: true, flashing: false)
+            .title == "Move back a little")
+    #expect(
+        CaptureRunView.copy(challenge: .faceMovement, centered: true, tooClose: false, flashing: false)
+            .title == "Slowly move closer")
+    #expect(
+        CaptureRunView.copy(challenge: light, centered: true, tooClose: false, flashing: true)
+            .title == "Hold still")
+    #expect(CaptureRunView.tone(centered: false, tooClose: false, flashing: false) == .idle)
+    #expect(CaptureRunView.tone(centered: false, tooClose: true, flashing: false) == .warning)
+    #expect(CaptureRunView.tone(centered: true, tooClose: false, flashing: false) == .success)
+}
+
+@Test func theSelfieWordsAndColorFollowTheFraming() {
+    let all: [SelfieGuidance?] = [nil, .noFace, .multipleFaces, .moveCloser, .centerFace, .holdSteady]
+    for guidance in all {
+        let copy = SelfieCaptureOverlayView.copy(guidance: guidance, captured: false, instruction: "x")
+        #expect(!copy.title.isEmpty)
+    }
+    #expect(SelfieCaptureOverlayView.tone(guidance: .multipleFaces, captured: false) == .warning)
+    #expect(SelfieCaptureOverlayView.tone(guidance: .holdSteady, captured: false) == .success)
+    #expect(SelfieCaptureOverlayView.tone(guidance: .noFace, captured: true) == .success)
+    #expect(
+        SelfieCaptureOverlayView.copy(guidance: .holdSteady, captured: true, instruction: "x").title
+            == "Got it!")
+}
+
+@Test func theFaceOvalFitsTheScreen() {
+    for size in [CGSize(width: 1366, height: 1024), CGSize(width: 1024, height: 1366),
+                 CGSize(width: 393, height: 852)] {
+        let oval = FaceCaptureOverlay.oval(in: size)
+        #expect(oval.minX >= 0 && oval.maxX <= size.width)
+        // Room above for the words and below for the note.
+        #expect(oval.minY > 90 && oval.maxY < size.height - 60)
+        // The grow-in shrinks it about the same center.
+        let small = FaceCaptureOverlay.oval(in: size, scale: 0.88)
+        #expect(abs(small.midX - oval.midX) < 0.01 && abs(small.midY - oval.midY) < 0.01)
+        #expect(small.width < oval.width)
+    }
+}

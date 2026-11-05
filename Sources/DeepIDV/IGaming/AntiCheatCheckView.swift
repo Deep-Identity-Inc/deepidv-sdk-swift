@@ -85,36 +85,30 @@ struct AntiCheatFlowView: View {
             }
 
         case .checking:
-            statusChrome {
-                ProgressView()
-                Text("Checking your photo…")
-                    .font(theme.typography.body())
-                    .foregroundStyle(theme.colors.grey.s700)
-            }
+            Kit.StatusScreen(
+                badge: .working(symbol: "person.crop.square"), title: "Checking your photo",
+                message: "This only takes a moment")
 
         case .finished(let result):
-            statusChrome {
-                Text(result.isDuplicate ? "This face is already registered" : "Check complete")
-                    .font(theme.typography.body())
-                    .foregroundStyle(theme.colors.grey.s700)
+            if result.isDuplicate {
+                Kit.StatusScreen(badge: .warning, title: "This face is already registered")
+            } else {
+                Kit.StatusScreen(badge: .success, title: "Check complete")
             }
 
         case .failed(let error):
-            statusChrome {
-                Text(error.message)
-                    .font(theme.typography.body())
-                    .foregroundStyle(theme.colors.grey.s700)
-                    .multilineTextAlignment(.center)
-                if error.kind == .cameraPermissionDenied {
-                    // Retrying re-arms the same capture surface, which will
-                    // immediately deny again — offer the Settings deep-link
-                    // instead of (or in addition to) "Try again" so the host
-                    // isn't stuck in a loop with no way out.
-                    Button("Open Settings", action: openSettings)
-                        .font(theme.typography.body())
-                }
-                Button("Try again") { model.retry() }
-                    .font(theme.typography.body())
+            if error.kind == .cameraPermissionDenied {
+                // Retrying re-arms the same capture surface, which will
+                // immediately deny again — offer the Settings deep-link first
+                // so the host isn't stuck in a loop with no way out.
+                Kit.StatusScreen(
+                    badge: .camera, title: "Camera access is off", message: error.message,
+                    primary: .init(title: "Open Settings", run: openSettings),
+                    secondary: .init(title: "Try again", run: model.retry))
+            } else {
+                Kit.StatusScreen(
+                    badge: .warning, title: "Something went wrong", message: error.message,
+                    primary: .init(title: "Try again", run: model.retry))
             }
         }
     }
@@ -124,15 +118,6 @@ struct AntiCheatFlowView: View {
         UIApplication.shared.open(url)
     }
 
-    /// Shared full-screen themed container for the non-capture states.
-    private func statusChrome(@ViewBuilder _ content: () -> some View) -> some View {
-        VStack(spacing: theme.spacing.md) {
-            content()
-        }
-        .padding(theme.spacing.lg)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(theme.colors.grey.s50)
-    }
 }
 
 #Preview {

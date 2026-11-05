@@ -14,11 +14,14 @@ import SwiftUI
 struct CaptureRunView: View {
     @Environment(\.theme) private var theme
     @StateObject private var capture: CustomLivenessCaptureController
+    private let challenge: ChallengeType
     private let onCaptured: (CaptureResult) -> Void
     private let onError: (DeepIDVError) -> Void
+    private let onCancel: (() -> Void)?
 
     init(
         script: ChallengeScript,
+        onCancel: (() -> Void)? = nil,
         onCaptured: @escaping (CaptureResult) -> Void,
         onError: @escaping (DeepIDVError) -> Void
     ) {
@@ -26,6 +29,8 @@ struct CaptureRunView: View {
             wrappedValue: CustomLivenessCaptureController(
                 controller: AVFoundationCameraController(position: .front, lockedFrameRate: 30),
                 script: script))
+        self.challenge = script.challengeType
+        self.onCancel = onCancel
         self.onCaptured = onCaptured
         self.onError = onError
     }
@@ -34,32 +39,19 @@ struct CaptureRunView: View {
         ZStack {
             CameraPreviewView(session: capture.previewSession ?? AVCaptureSession())
                 .ignoresSafeArea()
-
-            GeometryReader { geo in
-                let oval = ovalRect(in: geo.size)
-                ZStack {
-                    // Translucent scrim outside the oval so the face area reads
-                    // as the target while the surroundings stay visible.
-                    OvalCutoutScrim(hole: oval)
-                        .fill(
-                            theme.colors.grey.s900.opacity(0.45), style: FillStyle(eoFill: true))
-
-                    // Full-screen color overlay for the flashing-colors challenge.
-                    // Kept semi-transparent so the user can still see their face
-                    // to stay centered — the screen still casts enough colored
-                    // light for the backend's reflection-based light check.
-                    if let hex = capture.activeColor {
-                        Color(hex: hex).opacity(0.6)
-                    }
-
-                    ovalGuide(in: oval)
-
-                    instructionPill
-                        .position(x: geo.size.width / 2, y: oval.maxY + theme.spacing.xl)
-                }
-            }
-            .ignoresSafeArea()
+            let copy = Self.copy(
+                challenge: challenge, centered: capture.centeringDone,
+                tooClose: capture.tooClose, flashing: capture.activeColor != nil)
+            FaceCaptureOverlay(
+                title: copy.title, subtitle: copy.subtitle,
+                tone: Self.tone(
+                    centered: capture.centeringDone, tooClose: capture.tooClose,
+                    flashing: capture.activeColor != nil),
+                progress: capture.centeringDone ? capture.progress : nil,
+                flashColor: capture.activeColor,
+                onCancel: onCancel)
         }
+        .background(theme.colors.grey.s900)
         .task {
             do {
                 let result = try await capture.run()
@@ -72,62 +64,39 @@ struct CaptureRunView: View {
         }
     }
 
-    // MARK: - Guide geometry + chrome
-
-    /// A portrait oval about 60% of the screen width (capped for iPad), sat a
-    /// little above center so the instruction pill has room underneath.
-    private func ovalRect(in size: CGSize) -> CGRect {
-        let width = min(size.width * 0.6, 380)
-        let height = min(width * 1.4, size.height * 0.6)
-        return CGRect(
-            x: (size.width - width) / 2, y: (size.height - height) / 2 - theme.spacing.lg,
-            width: width, height: height)
-    }
-
-    /// Primary outline, with a success ring that fills as the challenge progresses.
-    private func ovalGuide(in rect: CGRect) -> some View {
-        ZStack {
-            Ellipse()
-                .strokeBorder(theme.colors.primary.opacity(0.9), lineWidth: 4)
-            Ellipse()
-                .trim(from: 0, to: capture.progress)
-                .stroke(theme.colors.success, style: StrokeStyle(lineWidth: 5, lineCap: .round))
-                .animation(.linear(duration: 0.1), value: capture.progress)
+    /// The words for where the check is.
+    static func copy(
+        challenge: ChallengeType, centered: Bool, tooClose: Bool, flashing: Bool
+    ) -> CaptureCopy {
+        if flashing {
+            return .init(title: "Hold still", subtitle: "Keep looking at the screen")
         }
-        .frame(width: rect.width, height: rect.height)
-        .position(x: rect.midX, y: rect.midY)
-    }
-
-    private var prompt: String {
-        if capture.centeringDone {
-            return capture.activeColor == nil ? "Slowly move closer" : "Hold still"
+        if centered {
+            switch challenge {
+            case .faceMovement:
+                return .init(title: "Slowly move closer", subtitle: "Keep your face inside the oval")
+            case .faceMovementAndLight:
+                return .init(title: "Hold still", subtitle: "The screen will flash a few colours")
+            }
         }
-        return capture.tooClose ? "Move back a little" : "Center your face in the oval"
+        if tooClose {
+            return .init(title: "Move back a little", subtitle: "Your whole face should fit in the oval")
+        }
+        switch challenge {
+        case .faceMovement:
+            return .init(title: "Position your face in the oval", subtitle: "Look straight at the screen")
+        case .faceMovementAndLight:
+            return .init(
+                title: "Position your face in the oval",
+                subtitle: "Then hold still while the screen flashes colours")
+        }
     }
 
-    /// Same white pill the document scanner uses for its side label, so the
-    /// instruction stays legible over any background.
-    private var instructionPill: some View {
-        Text(prompt)
-            .font(theme.typography.button(size: 17))
-            .foregroundStyle(theme.colors.grey.s900)
-            .multilineTextAlignment(.center)
-            .padding(.horizontal, theme.spacing.lg)
-            .padding(.vertical, theme.spacing.md)
-            .background(theme.colors.grey.s50)
-            .clipShape(Capsule())
-            .shadow(color: theme.colors.grey.s900.opacity(0.25), radius: 8, y: 2)
-            .animation(.easeInOut(duration: 0.2), value: prompt)
-    }
-}
-
-/// Full rect minus an ellipse, filled even-odd to dim everything outside the face guide.
-private struct OvalCutoutScrim: Shape {
-    let hole: CGRect
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path(rect)
-        path.addEllipse(in: hole)
-        return path
+    /// The oval's color: white while looking for the face, amber when too close,
+    /// green once it's in place.
+    static func tone(centered: Bool, tooClose: Bool, flashing: Bool) -> CaptureLayout.Tone {
+        if centered || flashing { return .success }
+        if tooClose { return .warning }
+        return .idle
     }
 }

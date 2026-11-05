@@ -12,6 +12,9 @@ final class WorkflowFlowModel: ObservableObject {
         case runningStep(index: Int)
         case resyncing
         case finishing
+        /// The run is submitted and the "You're all set" screen shows. The result
+        /// is reported when that screen closes.
+        case complete(WorkflowRunResult)
         case finished
         /// The entry call failed; no step has run.
         case failed(DeepIDVError)
@@ -40,6 +43,11 @@ final class WorkflowFlowModel: ObservableObject {
     private(set) var steps: [WorkflowStepPlan] = []
     private(set) var attemptsRemaining: Int?
     private(set) var renderGeneration = 0
+    /// Whether a run that ends without a session failure shows the "You're all
+    /// set" screen before reporting its result.
+    var showsCompletion = false
+    /// The result held while the completion screen shows.
+    private var pendingResult: Result<WorkflowRunResult, DeepIDVError>?
 
     private let entry: () async throws -> Entry
     private let fetchState: FetchStateOperation
@@ -179,7 +187,11 @@ final class WorkflowFlowModel: ObservableObject {
 
     /// Ends the run locally. No abandonment request is sent.
     func cancel() {
-        guard !hasFinished else { return }
+        guard !hasFinished else {
+            // Leaving the completion screen still reports the run.
+            completionDismissed()
+            return
+        }
         task?.cancel()
         let cancelStep = cancelActiveStep
         cancelActiveStep = nil
@@ -416,6 +428,19 @@ final class WorkflowFlowModel: ObservableObject {
         guard !hasFinished else { return }
         hasFinished = true
         cancelActiveStep = nil
+        if showsCompletion, case .success(let run) = result, run.sessionFailure == nil {
+            pendingResult = result
+            phase = .complete(run)
+            return
+        }
+        phase = .finished
+        onResult(result)
+    }
+
+    /// Closes the "You're all set" screen and reports the run. Once only.
+    func completionDismissed() {
+        guard let result = pendingResult else { return }
+        pendingResult = nil
         phase = .finished
         onResult(result)
     }

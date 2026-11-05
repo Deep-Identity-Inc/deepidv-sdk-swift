@@ -14,6 +14,7 @@ import Testing
     #expect(config.uploadTimeout == 120)  // 120_000ms
     #expect(config.documentCamera == .front)
     #expect(config.showsDocumentCaptureIntro == false)
+    #expect(config.showsCompletionScreen == true)
 }
 
 @Test func configDefaultsMatchStaticConstants() {

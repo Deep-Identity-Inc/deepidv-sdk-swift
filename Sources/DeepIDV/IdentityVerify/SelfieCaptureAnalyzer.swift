@@ -44,6 +44,9 @@ struct SelfieCaptureTunables: Sendable, Equatable {
     /// Seconds before the capture view reveals the manual shutter. The
     /// analyzer is wall-clock-free; the view consumes this.
     var autoCaptureTimeout: TimeInterval = 8
+    /// How long the photo just taken stays frozen in the oval, with a tick,
+    /// before the selfie is reported.
+    var capturedDisplay: TimeInterval = 0.9
 
     // The compiler-synthesized memberwise initializer is used — every stored
     // property has a default, so `.init()` and `.init(stabilityFrameCount:)` both work.

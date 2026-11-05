@@ -174,6 +174,11 @@ final class IDVerificationStepFlowModel: ObservableObject {
     private var selections: [IDVerificationDocumentSlot: WorkflowDocumentTypeOption] = [:]
     private var captures: [IDVerificationDocumentSlot: Capture] = [:]
     private var selfie: FileInput?
+
+    /// The primary document's front and the selfie, shown while they are sent.
+    var submittedPhotos: (document: FileInput?, selfie: FileInput?) {
+        (captures[.primary]?.front, selfie)
+    }
     /// Document upload keys from the last upload, kept so a selfie-only retry
     /// can resubmit them without uploading the documents again.
     private var documentUploadKeys: [SessionUploadSlot: String] = [:]
