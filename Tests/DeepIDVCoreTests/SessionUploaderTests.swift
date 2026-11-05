@@ -185,3 +185,55 @@ private func makeUploader(
         Issue.record("unexpected error type: \(error)")
     }
 }
+
+// MARK: - Extra frames
+
+@Test func extraFramesUploadUnderTheirOwnUploadTypes() async throws {
+    let (uploader, stub) = makeUploader { request in
+        if request.httpMethod == "POST" {
+            let body = sessionPresignJSON([
+                (
+                    fileKey: "org/sess/x1.jpg", uploadType: "id_front_extra_1",
+                    uploadURL: "https://s3.example.com/put/x1"
+                ),
+                (
+                    fileKey: "org/sess/x2.jpg", uploadType: "id_front_extra_2",
+                    uploadURL: "https://s3.example.com/put/x2"
+                ),
+            ])
+            return (body, makeResponse(url: request.url!.absoluteString, status: 200))
+        }
+        return (Data(), makeResponse(url: request.url!.absoluteString, status: 200))
+    }
+
+    let keys = try await uploader.uploadExtraFrames(
+        sessionID: "sess-1", files: [.idFront1: .data(jpegData), .idFront2: .data(jpegData)])
+    #expect(keys == [.idFront1: "org/sess/x1.jpg", .idFront2: "org/sess/x2.jpg"])
+
+    let requests = await stub.recorder.requests
+    let presign = try #require(requests.first { $0.httpMethod == "POST" })
+    let json =
+        try JSONSerialization.jsonObject(with: try #require(presign.httpBody)) as? [String: Any]
+    let files = try #require(json?["files"] as? [[String: Any]])
+    #expect(
+        Set(files.compactMap { $0["upload_type"] as? String }) == [
+            "id_front_extra_1", "id_front_extra_2",
+        ])
+    #expect(
+        Set(files.compactMap { $0["file_name"] as? String }) == [
+            "id_front_extra_1.jpg", "id_front_extra_2.jpg",
+        ])
+    #expect(requests.filter { $0.httpMethod == "PUT" }.count == 2)
+}
+
+@Test func aPresignAnswerForAnotherTypeIsAnError() async {
+    let (uploader, _) = makeUploader { request in
+        let body = sessionPresignJSON([
+            (fileKey: "k", uploadType: "id_back", uploadURL: "https://s3.example.com/put/0")
+        ])
+        return (body, makeResponse(url: request.url!.absoluteString, status: 200))
+    }
+    await #expect(throws: DeepIDVError.self) {
+        _ = try await uploader.upload(sessionID: "sess-1", files: [.idFront: .data(pngData)])
+    }
+}

@@ -44,13 +44,26 @@ struct DocumentCaptureAnalyzer: Sendable {
     /// worth showing: there's no point telling the user to "hold steady" when we
     /// can't even see a document, or to "reduce glare" on a frame that's the wrong
     /// shape entirely. Carries no state, so it's trivially testable in isolation.
-    func assess(_ quality: CaptureQuality) -> CaptureGuidance? {
+    ///
+    /// `checksSharpness: false` leaves out the blur gate. With the classifier in
+    /// play blur never holds a frame back, as on the web: the score is not
+    /// comparable across cameras (a legible card on an iPad front camera scores
+    /// about 50 against the 150 bar), and the photo is the sharpest frame kept.
+    func assess(_ quality: CaptureQuality, checksSharpness: Bool = true) -> CaptureGuidance? {
         guard quality.documentDetected else { return .searching }
         if quality.fillRatio < tunables.minFillRatio { return .moveCloser }
         if !aspectMatches(quality.aspectRatio) { return .fitDocumentInFrame }
         if quality.glareRatio > tunables.maxGlareRatio { return .reduceGlare }
-        if quality.sharpness < tunables.minSharpness { return .holdSteady }
+        if checksSharpness, quality.sharpness < tunables.minSharpness { return .holdSteady }
         return nil
+    }
+
+    /// Whether the document is in position: seen, close enough, the right shape and
+    /// free of glare. Sharpness and steadiness are left out: the classifier reads a
+    /// card that is a little soft or still moving, and the capture hold checks both.
+    func isFramed(_ quality: CaptureQuality) -> Bool {
+        quality.documentDetected && quality.fillRatio >= tunables.minFillRatio
+            && aspectMatches(quality.aspectRatio) && quality.glareRatio <= tunables.maxGlareRatio
     }
 
     /// Feeds one frame's metrics through the gates and the stability counter,
@@ -61,8 +74,10 @@ struct DocumentCaptureAnalyzer: Sendable {
     /// good frame in the middle of camera shake never trips the shutter) and
     /// returns that gate's guidance. A passing-but-not-yet-stable frame asks the
     /// user to hold steady.
-    mutating func evaluate(_ quality: CaptureQuality) -> CaptureDecision {
-        if let failure = assess(quality) {
+    mutating func evaluate(_ quality: CaptureQuality, checksSharpness: Bool = true)
+        -> CaptureDecision
+    {
+        if let failure = assess(quality, checksSharpness: checksSharpness) {
             consecutiveGoodFrames = 0
             previousCenter = quality.center
             return .guide(failure)
@@ -184,7 +199,8 @@ struct VisionDocumentFrameEvaluator: DocumentFrameEvaluating {
             aspectRatio: aspectRatio,
             sharpness: sharpness,
             glareRatio: glareRatio,
-            center: CGPoint(x: box.midX, y: box.midY))
+            center: CGPoint(x: box.midX, y: box.midY),
+            boundingBox: box)
     }
 
     /// Runs segmentation, falling back to rectangle detection. Shared by the
@@ -251,7 +267,7 @@ struct VisionDocumentFrameEvaluator: DocumentFrameEvaluating {
     /// sharpness and near-white glare fraction. Assumes a 32-bit BGRA buffer
     /// (the format the live ``AVFoundationCameraController`` requests); other
     /// formats yield zeroed metrics, which simply keep auto-capture from firing.
-    private static func sharpnessAndGlare(
+    static func sharpnessAndGlare(
         in pixelBuffer: CVPixelBuffer, boundingBox: CGRect
     ) -> (sharpness: Double, glareRatio: Double) {
         guard CVPixelBufferGetPixelFormatType(pixelBuffer) == kCVPixelFormatType_32BGRA else {

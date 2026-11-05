@@ -1,5 +1,6 @@
 // DeepIDV › DocumentScanner › Capture
 
+import DeepIDVCore
 import SwiftUI
 
 /// The camera overlay drawn on top of the live preview: the dimmed scrim
@@ -254,6 +255,23 @@ struct CaptureOverlayView: View {
         case .fitDocumentInFrame: return "Fit your document in the frame"
         case .reduceGlare: return "Reduce glare"
         case .holdSteady: return "Hold steady"
+        case .identifying: return "Checking your ID…"
+        case .connecting: return "Getting ready…"
+        case .wrongWay: return "Turn your card the right way up"
+        case .healthCard: return "Health cards can't be used. Please use a different ID."
+        case .otherDocument(let kind):
+            return "This looks like \(kindLabel(kind)). Is this the right document?"
+        }
+    }
+
+    /// A document kind in a sentence: "a driver's licence", "an ID card".
+    static func kindLabel(_ kind: DocumentClassKind) -> String {
+        switch kind {
+        case .driversLicence: return "a driver's licence"
+        case .idCard: return "an ID card"
+        case .healthCard: return "a health card"
+        case .federal: return "a government ID"
+        case .passport: return "a passport"
         }
     }
 }

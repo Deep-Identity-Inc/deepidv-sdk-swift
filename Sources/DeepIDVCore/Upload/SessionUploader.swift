@@ -33,34 +33,43 @@ public struct SessionUploader: Sendable {
     public func upload(
         sessionID: String, files: [SessionUploadSlot: FileInput]
     ) async throws -> [SessionUploadSlot: String] {
-        let prepared:
-            [(slot: SessionUploadSlot, data: Data, contentType: String, fileName: String)] =
-                try files.map { slot, input in
-                    let data = try input.normalizedData()
-                    let contentType = try detectContentType(data)
-                    let ext = contentType == "image/png" ? "png" : "jpg"
-                    return (slot, data, contentType, "\(slot.rawValue).\(ext)")
-                }
+        try await upload(sessionID: sessionID, files: files, uploadType: \.rawValue)
+    }
+
+    /// Uploads extra frames of the fronts, under their own upload types. Internal:
+    /// they never appear among the public slots.
+    package func uploadExtraFrames(
+        sessionID: String, files: [ExtraFrameSlot: FileInput]
+    ) async throws -> [ExtraFrameSlot: String] {
+        try await upload(sessionID: sessionID, files: files, uploadType: \.rawValue)
+    }
+
+    private func upload<Slot: Hashable & Sendable>(
+        sessionID: String, files: [Slot: FileInput], uploadType: (Slot) -> String
+    ) async throws -> [Slot: String] {
+        let prepared: [(slot: Slot, type: String, data: Data, contentType: String)] =
+            try files.map { slot, input in
+                let data = try input.normalizedData()
+                let contentType = try detectContentType(data)
+                return (slot, uploadType(slot), data, contentType)
+            }
 
         let request = SessionPresignRequest(
             files: prepared.map {
-                SessionPresignRequest.File(
-                    fileName: $0.fileName,
+                let ext = $0.contentType == "image/png" ? "png" : "jpg"
+                return SessionPresignRequest.File(
+                    fileName: "\($0.type).\(ext)",
                     contentType: $0.contentType,
-                    uploadType: $0.slot.rawValue)
+                    uploadType: $0.type)
             })
         let response: SessionPresignResponse = try await client.post(
             "/v1/sessions/\(sessionID)/uploads", body: request)
 
-        var keysBySlot: [SessionUploadSlot: String] = [:]
-        try await withThrowingTaskGroup(of: (SessionUploadSlot, String).self) { group in
+        var keysBySlot: [Slot: String] = [:]
+        try await withThrowingTaskGroup(of: (Slot, String).self) { group in
             for signed in response.signedURLs {
-                guard let slot = SessionUploadSlot(rawValue: signed.uploadType) else {
-                    throw DeepIDVError.api(
-                        "Presign returned unknown upload_type '\(signed.uploadType)'.",
-                        status: nil)
-                }
-                guard let preparedFile = prepared.first(where: { $0.slot == slot }) else {
+                guard let preparedFile = prepared.first(where: { $0.type == signed.uploadType })
+                else {
                     throw DeepIDVError.api(
                         "Presign returned upload_type '\(signed.uploadType)' not in the request.",
                         status: nil)
@@ -68,6 +77,7 @@ public struct SessionUploader: Sendable {
                 guard let uploadURL = URL(string: signed.uploadURL) else {
                     throw DeepIDVError.api("Presign returned an invalid upload URL.", status: nil)
                 }
+                let slot = preparedFile.slot
                 let fileKey = signed.fileKey
                 let data = preparedFile.data
                 let contentType = preparedFile.contentType

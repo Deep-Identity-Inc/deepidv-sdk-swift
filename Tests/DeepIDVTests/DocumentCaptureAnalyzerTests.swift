@@ -173,3 +173,40 @@ private func passingQuality(at center: CGPoint) -> CaptureQuality {
     #expect(analyzer.evaluate(passingQuality(at: CGPoint(x: 0.505, y: 0.5))) == .guide(.holdSteady))
     #expect(analyzer.evaluate(passingQuality(at: CGPoint(x: 0.508, y: 0.5))) == .capture)
 }
+
+// MARK: - Framed (what lets a classifier answer vote)
+
+@Test func aSoftCardInPositionIsFramedButNotSharpEnoughToCapture() {
+    let analyzer = DocumentCaptureAnalyzer(documentType: .idCard)
+    var quality = passingQuality()
+    quality.sharpness = 60
+    #expect(analyzer.isFramed(quality))
+    #expect(analyzer.assess(quality) == .holdSteady)
+}
+
+@Test func aCardOutOfPositionOrUnderGlareIsNotFramed() {
+    let analyzer = DocumentCaptureAnalyzer(documentType: .idCard)
+    var far = passingQuality()
+    far.fillRatio = 0.40
+    var square = passingQuality()
+    square.aspectRatio = 1.0
+    var glare = passingQuality()
+    glare.glareRatio = 0.2
+    #expect(analyzer.isFramed(passingQuality()))
+    #expect(!analyzer.isFramed(CaptureQuality(documentDetected: false)))
+    #expect(!analyzer.isFramed(far))
+    #expect(!analyzer.isFramed(square))
+    #expect(!analyzer.isFramed(glare))
+}
+
+@Test func theBlurGateCanBeLeftOut() {
+    var analyzer = DocumentCaptureAnalyzer(documentType: .idCard)
+    var quality = passingQuality()
+    quality.sharpness = 50
+    #expect(analyzer.assess(quality, checksSharpness: false) == nil)
+    // Steadiness still counts: a lone frame only starts the streak.
+    #expect(analyzer.evaluate(quality, checksSharpness: false) == .guide(.holdSteady))
+    var glare = quality
+    glare.glareRatio = 0.2
+    #expect(analyzer.assess(glare, checksSharpness: false) == .reduceGlare)
+}

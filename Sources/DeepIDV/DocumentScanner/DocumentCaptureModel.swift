@@ -67,6 +67,16 @@ final class DocumentCaptureModel<Output>: ObservableObject {
     private let tunables: DocumentCaptureTunables
     private let complete: CompleteOperation
     private let onResult: (Result<Output, DeepIDVError>) -> Void
+    /// The document classifier for card fronts, or `nil` for on-device checks only.
+    private let classifier: (any DocumentClassifying)?
+    /// The session captures by the classifier's rules (ID capture v2): blur never
+    /// holds a frame back on any side, and a back or a passport page is captured
+    /// once steady for `steadyCaptureDuration`.
+    private let usesClassifierRules: Bool
+    /// Told about every front photo, with what the classifier made of it.
+    private let onFrontCaptured: ((FrontCaptureReport) -> Void)?
+    /// The classifier's clock (seconds, monotonic).
+    private let clock: () -> TimeInterval
 
     // MARK: - Internal state
 
@@ -74,6 +84,8 @@ final class DocumentCaptureModel<Output>: ObservableObject {
     private var isCancelled = false
     private var hasFinished = false
     private var manualRequested = false
+    /// Whether the side just captured was taken with the manual shutter.
+    private var lastCaptureWasManual = false
     private var manualShutterTask: Task<Void, Never>?
     /// Whether the back side is armed for auto-capture (after the flip grace).
     private var backArmed = false
@@ -82,6 +94,14 @@ final class DocumentCaptureModel<Output>: ObservableObject {
     private var lastQuality: CaptureQuality?
     /// When the document last became steady — the start of the hold-still dwell.
     private var steadyStartedAt: Date?
+    /// Recent sharpness scores of frames with a document on this side, on `clock`.
+    private var recentSharpness: [(time: TimeInterval, value: Double)] = []
+    /// When capture, otherwise ready, began waiting for a sharper frame.
+    private var sharpnessWaitSince: TimeInterval?
+    /// Whether a document has been in view on this side yet.
+    private var documentSeenOnSide = false
+    /// When the manual shutter is due to show.
+    private var shutterDeadline: Date?
 
     /// Capture diagnostics. Filter the Xcode console / Console.app by this
     /// subsystem (`com.deepidv.sdk`) to see why auto-capture is or isn't locking.
@@ -95,6 +115,10 @@ final class DocumentCaptureModel<Output>: ObservableObject {
         encoder: any DocumentStillEncoding,
         authorizer: any CameraAuthorizing = AlwaysAuthorizedCamera(),
         tunables: DocumentCaptureTunables = .init(),
+        classifier: (any DocumentClassifying)? = nil,
+        usesClassifierRules: Bool = false,
+        onFrontCaptured: ((FrontCaptureReport) -> Void)? = nil,
+        clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
         complete: @escaping CompleteOperation,
         onResult: @escaping (Result<Output, DeepIDVError>) -> Void
     ) {
@@ -108,6 +132,10 @@ final class DocumentCaptureModel<Output>: ObservableObject {
         self.analyzer = DocumentCaptureAnalyzer(documentType: documentType, tunables: tunables)
         self.complete = complete
         self.onResult = onResult
+        self.classifier = classifier
+        self.usesClassifierRules = usesClassifierRules || classifier != nil
+        self.onFrontCaptured = onFrontCaptured
+        self.clock = clock
     }
 
     // MARK: - Lifecycle
@@ -138,6 +166,7 @@ final class DocumentCaptureModel<Output>: ObservableObject {
         guard !hasFinished else { return }
         isCancelled = true
         cancelManualShutterTimer()
+        classifier?.stop()
         controller.stop()
         finish(.failure(.cancelled("Document scanning was cancelled.")))
     }
@@ -197,7 +226,9 @@ final class DocumentCaptureModel<Output>: ObservableObject {
                 continue
             }
 
-            if !shouldCapture(frame) { continue }
+            // The classifier only looks at card fronts: backs and passports skip it.
+            let sideClassifier = capturingBack || documentType == .passport ? nil : classifier
+            if !shouldCapture(frame, classifier: sideClassifier) { continue }
 
             // Lock acquired — grab a full-resolution still; fall back to the
             // streamed video frame if the photo capture fails (never a regression).
@@ -209,12 +240,22 @@ final class DocumentCaptureModel<Output>: ObservableObject {
             }
             if isCancelled { return }
 
-            let input: FileInput
+            var input: FileInput
             do {
                 input = try encoder.encode(captured, documentType: documentType)
             } catch {
                 finishCaptureFailed(error, fallback: "Unable to process the captured image.")
                 return
+            }
+
+            if !capturingBack {
+                let report =
+                    await sideClassifier?.frontCaptured(
+                        photo: input, manual: lastCaptureWasManual, at: clock())
+                    ?? FrontCaptureReport(photo: input, classification: nil, extraFrames: [])
+                if isCancelled { return }
+                input = report.photo
+                onFrontCaptured?(report)
             }
 
             // Two-sided document, front just captured → flash a confirmation,
@@ -229,6 +270,8 @@ final class DocumentCaptureModel<Output>: ObservableObject {
                 guidance = nil
                 manualRequested = false
                 steadyStartedAt = nil
+                sharpnessWaitSince = nil
+                recentSharpness.removeAll()
                 holdProgress = 0
                 analyzer.reset()
                 startManualShutterTimer()
@@ -257,25 +300,109 @@ final class DocumentCaptureModel<Output>: ObservableObject {
 
     /// Whether to capture this frame — an explicit manual request wins; otherwise
     /// the analyzer's gate decides, and any guidance is published for the overlay.
-    private func shouldCapture(_ frame: CameraFrame) -> Bool {
+    ///
+    /// With a classifier in play, both must agree: the classifier's verdict holds
+    /// capture back (or blocks it, for a health card) until it is satisfied, and
+    /// the on-device gates must then pass on every frame for the classifier hold.
+    /// When the classifier is off, the on-device logic runs exactly as without it.
+    private func shouldCapture(
+        _ frame: CameraFrame, classifier: (any DocumentClassifying)?
+    ) -> Bool {
         if manualRequested {
             manualRequested = false
+            lastCaptureWasManual = true
             log.debug("manual capture requested")
             return true
         }
+        lastCaptureWasManual = false
         let quality = evaluator.quality(of: frame, for: documentType)
         lastQuality = quality
-        switch analyzer.evaluate(quality) {
+        let now = clock()
+        if quality.documentDetected {
+            recentSharpness.append((now, quality.sharpness))
+            recentSharpness.removeAll { now - $0.time > tunables.sharpnessWindow + 1e-9 }
+            if !documentSeenOnSide {
+                documentSeenOnSide = true
+                scheduleManualShutter(in: tunables.autoCaptureTimeout)
+            }
+        }
+        // With the classifier's rules, blur only shapes which frame becomes the
+        // photo; without them, the blur gate stands as before.
+        let decision = analyzer.evaluate(quality, checksSharpness: !usesClassifierRules)
+        if let classifier {
+            classifier.observe(
+                frame, quality: quality, framed: analyzer.isFramed(quality),
+                visionReady: decision == .capture, at: now)
+            switch classifier.verdict(at: now) {
+            case .off:
+                break
+            case .block(let blocking):
+                resetDwell()
+                guidance = blocking
+                return false
+            case .hold(let waiting):
+                resetDwell()
+                // The on-device hints come first: they're the ones the user can act on.
+                if case .guide(let hint) = decision {
+                    guidance = hint
+                } else {
+                    guidance = waiting
+                }
+                return false
+            case .go:
+                return dwell(decision, quality, duration: tunables.classifierHoldDuration)
+            }
+        }
+        // A back or a passport page under the classifier's rules: once steady.
+        let steadyOnly = usesClassifierRules && classifier == nil
+        return dwell(
+            decision, quality,
+            duration: steadyOnly ? tunables.steadyCaptureDuration : tunables.holdStillDuration)
+    }
+
+    private func resetDwell() {
+        steadyStartedAt = nil
+        sharpnessWaitSince = nil
+        holdProgress = 0
+    }
+
+    /// Under the classifier's rules, whether this frame is sharp enough to be the
+    /// moment of capture: at least `relativeSharpnessFloor` of the sharpest recent
+    /// frame, or once capture has waited `sharpnessWaitLimit` for one.
+    private func sharpEnough(_ quality: CaptureQuality) -> Bool {
+        guard usesClassifierRules else { return true }
+        let now = clock()
+        let peak = recentSharpness.map(\.value).max() ?? 0
+        if quality.sharpness >= peak * tunables.relativeSharpnessFloor {
+            sharpnessWaitSince = nil
+            return true
+        }
+        let since = sharpnessWaitSince ?? now
+        sharpnessWaitSince = since
+        guard now - since >= tunables.sharpnessWaitLimit else { return false }
+        log.debug(
+            "no sharper frame after \(self.tunables.sharpnessWaitLimit, privacy: .public)s; capturing anyway"
+        )
+        sharpnessWaitSince = nil
+        return true
+    }
+
+    /// The hold-still dwell: capture once the gates have passed on every frame for
+    /// `duration`.
+    private func dwell(
+        _ decision: CaptureDecision, _ quality: CaptureQuality, duration: TimeInterval
+    ) -> Bool {
+        switch decision {
         case .capture:
             // The document is well-positioned and still right now. Require the user
-            // to hold it there for `holdStillDuration` before firing — the elapsed
+            // to hold it there for `duration` before firing — the elapsed
             // time drives the overlay's progress ring (a deliberate "hold still").
             let start = steadyStartedAt ?? Date()
             steadyStartedAt = start
             let elapsed = Date().timeIntervalSince(start)
-            holdProgress = min(1, elapsed / max(0.001, tunables.holdStillDuration))
+            holdProgress = min(1, elapsed / max(0.001, duration))
             guidance = .holdSteady
-            if elapsed >= tunables.holdStillDuration {
+            if elapsed >= duration, sharpEnough(quality) {
                 log.debug("auto-capture after hold — \(Self.describe(quality), privacy: .public)")
                 return true
             }
@@ -288,6 +415,7 @@ final class DocumentCaptureModel<Output>: ObservableObject {
                 )
             }
             steadyStartedAt = nil
+            sharpnessWaitSince = nil
             holdProgress = 0
             guidance = hint
             return false
@@ -357,6 +485,7 @@ final class DocumentCaptureModel<Output>: ObservableObject {
         guard !hasFinished else { return }
         hasFinished = true
         holdProgress = 0
+        classifier?.stop()
         cancelManualShutterTimer()
         backArmTask?.cancel()
         onResult(result)
@@ -376,19 +505,29 @@ final class DocumentCaptureModel<Output>: ObservableObject {
 
     // MARK: - Manual-shutter timer
 
-    /// (Re)starts the countdown that reveals the manual shutter after the
-    /// auto-capture timeout. Kept off the analyzer so gating stays wall-clock-free.
+    /// (Re)starts a side's countdown to the manual shutter: `manualShutterCeiling`
+    /// at the latest, brought forward to `autoCaptureTimeout` after the document
+    /// first comes into view. Kept off the analyzer so gating stays wall-clock-free.
     private func startManualShutterTimer() {
-        manualShutterVisible = false
+        cancelManualShutterTimer()
+        documentSeenOnSide = false
+        scheduleManualShutter(in: tunables.manualShutterCeiling)
+    }
+
+    /// Shows the manual shutter after `delay`, unless it's already due sooner.
+    private func scheduleManualShutter(in delay: TimeInterval) {
+        guard !manualShutterVisible, !hasFinished else { return }
+        let deadline = Date().addingTimeInterval(delay)
+        if let shutterDeadline, shutterDeadline <= deadline { return }
+        shutterDeadline = deadline
         manualShutterTask?.cancel()
-        let timeout = tunables.autoCaptureTimeout
         manualShutterTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+            try? await Task.sleep(nanoseconds: UInt64(max(0, delay) * 1_000_000_000))
             guard !Task.isCancelled, let self else { return }
             self.manualShutterVisible = true
             let last = self.lastQuality.map(Self.describe) ?? "no frames analyzed"
             self.log.info(
-                "auto-capture timed out after \(timeout, privacy: .public)s — showing manual shutter. last: \(last, privacy: .public)"
+                "no auto-capture after \(delay, privacy: .public)s — showing manual shutter. last: \(last, privacy: .public)"
             )
         }
     }
@@ -396,6 +535,7 @@ final class DocumentCaptureModel<Output>: ObservableObject {
     private func cancelManualShutterTimer() {
         manualShutterTask?.cancel()
         manualShutterTask = nil
+        shutterDeadline = nil
         manualShutterVisible = false
     }
 
