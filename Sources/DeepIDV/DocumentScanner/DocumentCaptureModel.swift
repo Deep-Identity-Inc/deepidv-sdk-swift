@@ -6,6 +6,7 @@ import CoreGraphics
 import DeepIDVCore
 import Foundation
 import OSLog
+import UIKit
 
 /// The guided document-capture coordinator — the testable brain behind
 /// ``DocumentScannerView`` and the document step of the drop-in verify flow.
@@ -65,6 +66,10 @@ final class DocumentCaptureModel<Output>: ObservableObject {
     @Published private(set) var showSideCaptured = false {
         didSet { refreshStage() }
     }
+    /// The document the classifier names on the front, for the screen's label.
+    @Published private(set) var shownDocument: ShownDocument?
+    /// The photo just taken, shown in the frame while the side is confirmed.
+    @Published private(set) var capturedImage: UIImage?
 
     // MARK: - Dependencies
 
@@ -114,6 +119,9 @@ final class DocumentCaptureModel<Output>: ObservableObject {
     /// When the manual shutter is due to show.
     private var shutterDeadline: Date?
     private var stagePresenter = CaptureStagePresenter()
+    /// The on-screen frame: its width as a share of the screen's, and the
+    /// screen's width ÷ height. `nil` until the screen reports it.
+    private var guide: (widthShare: Double, screenAspect: Double)?
 
     /// Capture diagnostics. Filter the Xcode console / Console.app by this
     /// subsystem (`com.deepidv.sdk`) to see why auto-capture is or isn't locking.
@@ -169,6 +177,14 @@ final class DocumentCaptureModel<Output>: ObservableObject {
     }
 
     /// Requests a manual capture of the next frame — the shutter-button action.
+    /// Where the frame is drawn, so "close enough" means filling it. The
+    /// preview fills the screen, cropping the camera's view to the screen's
+    /// shape, so the frame's share of the camera frame follows from both.
+    func guideChanged(widthShare: Double, screenAspect: Double) {
+        guard widthShare > 0, screenAspect > 0 else { return }
+        guide = (widthShare, screenAspect)
+    }
+
     func triggerManualCapture() {
         manualRequested = true
     }
@@ -212,6 +228,12 @@ final class DocumentCaptureModel<Output>: ObservableObject {
         case .processing: return nil
         }
     }
+
+    /// The document has a back to capture after the front.
+    var hasBack: Bool { captureMode == .frontAndBack }
+
+    /// The side being captured is the last one.
+    var isFinalSide: Bool { phase == .capturingBack || !hasBack }
 
     // MARK: - Stage
 
@@ -285,16 +307,20 @@ final class DocumentCaptureModel<Output>: ObservableObject {
                 onFrontCaptured?(report)
             }
 
+            capturedImage = ClassifierImages.data(of: input).flatMap(UIImage.init(data:))
+
             // Two-sided document, front just captured → flash a confirmation,
             // then advance to the back.
             if !capturingBack, captureMode == .frontAndBack {
                 frontInput = input
-                await confirmSideCaptured()
+                await confirmSideCaptured(for: tunables.sideCapturedDisplay)
                 if isCancelled { return }
                 capturingBack = true
                 backArmed = false
                 phase = .capturingBack
                 guidance = nil
+                shownDocument = nil
+                capturedImage = nil
                 manualRequested = false
                 steadyStartedAt = nil
                 sharpnessWaitSince = nil
@@ -308,7 +334,7 @@ final class DocumentCaptureModel<Output>: ObservableObject {
 
             // Final side captured (passport front, or a card's back).
             cancelManualShutterTimer()
-            await confirmSideCaptured()
+            await confirmSideCaptured(for: tunables.doneDisplay)
             if isCancelled { return }
             await submit(
                 front: capturingBack ? (frontInput ?? input) : input,
@@ -342,6 +368,13 @@ final class DocumentCaptureModel<Output>: ObservableObject {
             return true
         }
         lastCaptureWasManual = false
+        if let guide, let buffer = frame.pixelBuffer {
+            let height = Double(CVPixelBufferGetHeight(buffer))
+            let aspect = height > 0 ? Double(CVPixelBufferGetWidth(buffer)) / height : 0
+            analyzer.guideFill = DocumentCaptureAnalyzer.guideFill(
+                widthShare: guide.widthShare, screenAspect: guide.screenAspect,
+                frameAspect: aspect, share: tunables.guideFillShare)
+        }
         let quality = evaluator.quality(of: frame, for: documentType)
         lastQuality = quality
         let now = clock()
@@ -360,6 +393,8 @@ final class DocumentCaptureModel<Output>: ObservableObject {
             classifier.observe(
                 frame, quality: quality, framed: analyzer.isFramed(quality),
                 visionReady: decision == .capture, at: now)
+            let named = classifier.shownDocument
+            if named != shownDocument { shownDocument = named }
             switch classifier.verdict(at: now) {
             case .off:
                 break
@@ -480,12 +515,12 @@ final class DocumentCaptureModel<Output>: ObservableObject {
     /// Flashes the captured-side checkmark for a beat so the user gets clear
     /// per-side feedback before the flow moves on. Clears the live guidance
     /// and dwell so nothing competes with the confirmation.
-    private func confirmSideCaptured() async {
+    private func confirmSideCaptured(for duration: TimeInterval) async {
         guidance = nil
         holdProgress = 0
         steadyStartedAt = nil
         showSideCaptured = true
-        try? await Task.sleep(nanoseconds: UInt64(tunables.sideCapturedDisplay * 1_000_000_000))
+        try? await Task.sleep(nanoseconds: UInt64(max(0, duration) * 1_000_000_000))
         showSideCaptured = false
     }
 

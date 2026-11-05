@@ -48,6 +48,23 @@ protocol DocumentClassifying: AnyObject {
         -> FrontCaptureReport
     /// The capture ended without a photo; stop any work in flight.
     func stop()
+    /// The document the classifier names for the screen, or `nil`.
+    var shownDocument: ShownDocument? { get }
+}
+
+extension DocumentClassifying {
+    var shownDocument: ShownDocument? { nil }
+}
+
+/// The document the capture screen names while scanning.
+struct ShownDocument: Sendable, Equatable {
+    /// The classifier's class id.
+    var id: String
+    /// Confirmed, or only a first guess.
+    var confirmed: Bool
+
+    /// The name to show: "Ontario Driver's Licence".
+    var label: String? { DocumentClassCatalog.label(of: id) }
 }
 
 /// Whether the classifier works for this session: unknown until its first

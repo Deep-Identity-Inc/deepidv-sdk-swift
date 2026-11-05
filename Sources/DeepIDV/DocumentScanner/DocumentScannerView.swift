@@ -99,18 +99,21 @@ struct DocumentCaptureFlowView<Output>: View {
                 )
                 .ignoresSafeArea()
                 CaptureOverlayView(
-                    instruction: model.instructionText,
                     stage: model.stage,
-                    manualShutterVisible: model.manualShutterVisible,
-                    isProcessing: model.phase == .processing,
-                    permissionDenied: model.permissionDenied,
-                    sideLabel: model.sideLabel,
-                    sideCaptured: model.showSideCaptured,
+                    context: CaptureCopy.Context(
+                        documentType: model.documentType,
+                        isBack: model.phase == .capturingBack,
+                        isFinalSide: model.isFinalSide),
+                    document: model.shownDocument,
+                    capturedImage: model.capturedImage,
                     holdProgress: model.holdProgress,
+                    manualShutterVisible: model.manualShutterVisible,
+                    permissionDenied: model.permissionDenied,
                     guideAspect: model.documentType == .passport ? 1.42 : 1.586,
                     onManualCapture: { model.triggerManualCapture() },
                     onCancel: { model.cancel() },
-                    onOpenSettings: openSettings)
+                    onOpenSettings: openSettings,
+                    onGuideChange: { model.guideChanged(widthShare: $0, screenAspect: $1) })
             }
             .background(theme.colors.grey.s900)
             .task { await model.run() }

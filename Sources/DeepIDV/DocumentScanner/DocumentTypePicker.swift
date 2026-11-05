@@ -6,14 +6,14 @@ import SwiftUI
 /// The document-type selection step.
 ///
 /// Presents the three pickable types — Passport / ID card / Driver's license
-/// (`allCases` minus `.auto`) — as a card grid: the front-only-vs-front-and-back
+/// (`allCases` minus `.auto`) — as a list of tappable rows: the front-only-vs-front-and-back
 /// capture rule must be known *before* capture, so `.auto` (which has no
 /// deterministic side count) is offered only on the headless `scanDocument`
-/// method, never here. The user taps a card to select it, then confirms with
-/// Continue. Used as the first step of the drop-in flow and available composably;
+/// method, never here. A tap on a document picks it. Used as the first step of the drop-in flow and available composably;
 /// themed via `@Environment(\.theme)` like every SDK view.
 public struct DocumentTypePicker: View {
     @Environment(\.theme) private var theme
+    @Environment(\.colorScheme) private var scheme
     @State private var selected: DocumentType?
     private let availableTypes: [DocumentType]
     private let heading: String
@@ -28,7 +28,7 @@ public struct DocumentTypePicker: View {
 
     public init(onSelect: @escaping (DocumentType) -> Void) {
         self.availableTypes = Self.pickableTypes
-        self.heading = "Select your verification method"
+        self.heading = "Which ID will you use?"
         self.onCancel = nil
         self.onSelect = onSelect
     }
@@ -48,85 +48,113 @@ public struct DocumentTypePicker: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: theme.spacing.lg) {
-            HStack {
-                Text(heading)
-                    .font(theme.typography.heading(size: 22))
-                    .foregroundStyle(theme.colors.grey.s900)
-                Spacer()
-                if let onCancel {
-                    Button("Cancel", action: onCancel)
-                        .font(theme.typography.button(size: 16))
-                        .foregroundStyle(theme.colors.grey.s600)
+        let palette = CaptureScreens.Palette(theme, scheme)
+        ScrollView { content(palette: palette) }
+        .overlay(alignment: .topLeading) {
+            if let onCancel {
+                Button(action: onCancel) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(palette.text)
+                        .frame(width: 44, height: 44)
+                        .background(Circle().fill(palette.card))
+                        .overlay(Circle().strokeBorder(palette.cardLine, lineWidth: 1))
                 }
+                .buttonStyle(CaptureLayout.PressStyle())
+                .accessibilityLabel("Cancel")
+                .padding(theme.spacing.md)
             }
-
-            LazyVGrid(
-                columns: [
-                    GridItem(.flexible(), spacing: theme.spacing.md),
-                    GridItem(.flexible(), spacing: theme.spacing.md),
-                ],
-                spacing: theme.spacing.md
-            ) {
-                ForEach(availableTypes, id: \.self) { type in
-                    card(for: type)
-                }
-            }
-
-            Spacer()
-
-            Button {
-                if let selected { onSelect(selected) }
-            } label: {
-                Text("Continue")
-                    .font(theme.typography.button(size: 16))
-                    .foregroundStyle(theme.colors.grey.s50)
-                    .frame(maxWidth: .infinity)
-                    .padding(theme.spacing.md)
-                    .background(selected == nil ? theme.colors.grey.s300 : theme.colors.primary)
-                    .clipShape(RoundedRectangle(cornerRadius: theme.spacing.sm, style: .continuous))
-            }
-            .disabled(selected == nil)
         }
-        .padding(theme.spacing.lg)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(theme.colors.grey.s50)
+        .background(palette.background.ignoresSafeArea())
     }
 
-    /// One selectable document card: an icon tile over its label, with a selected
-    /// (primary border + tint) vs. unselected (neutral) treatment.
-    private func card(for type: DocumentType) -> some View {
-        let isSelected = selected == type
-        return Button {
-            selected = type
-        } label: {
-            VStack(spacing: theme.spacing.md) {
-                Image(systemName: Self.symbolName(for: type))
-                    .font(.system(size: 32, weight: .regular))
-                    .foregroundStyle(theme.colors.primary)
-                    .frame(width: 64, height: 64)
-                    .background(theme.colors.primary.opacity(0.1))
-                    .clipShape(RoundedRectangle(cornerRadius: theme.spacing.sm, style: .continuous))
-
-                Text(Self.title(for: type))
-                    .font(theme.typography.body(size: 14))
-                    .foregroundStyle(theme.colors.grey.s600)
-                    .multilineTextAlignment(.center)
+    /// The heading, the rows and the encryption note, without the scrolling.
+    func content(palette: CaptureScreens.Palette) -> some View {
+        VStack(alignment: .leading, spacing: theme.spacing.lg) {
+            VStack(alignment: .leading, spacing: theme.spacing.sm) {
+                Text(heading)
+                    .font(theme.typography.heading(size: 28).weight(.semibold))
+                    .foregroundStyle(palette.text)
+                Text("Choose the document you have with you")
+                    .font(theme.typography.body(size: 16))
+                    .foregroundStyle(palette.secondaryText)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
+
+            VStack(spacing: theme.spacing.md) {
+                ForEach(availableTypes, id: \.self) { type in
+                    row(for: type, palette: palette)
+                }
+            }
+
+            HStack(spacing: 6) {
+                Image(systemName: "lock.fill").font(.system(size: 12, weight: .semibold))
+                Text(CaptureCopy.encryption)
+                    .font(theme.typography.body(size: 13).weight(.medium))
+            }
+            .foregroundStyle(palette.secondaryText)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, theme.spacing.lg)
-            .padding(.horizontal, theme.spacing.sm)
-            .background(isSelected ? theme.colors.primary.opacity(0.05) : theme.colors.grey.s100)
-            .overlay(
-                RoundedRectangle(cornerRadius: theme.spacing.md, style: .continuous)
-                    .strokeBorder(
-                        isSelected ? theme.colors.primary : theme.colors.grey.s300,
-                        lineWidth: 1)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: theme.spacing.md, style: .continuous))
+            .padding(.top, theme.spacing.sm)
+            .accessibilityElement(children: .combine)
         }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .padding(.horizontal, theme.spacing.lg)
+        .padding(.top, onCancel == nil ? theme.spacing.xl : 72)
+        .padding(.bottom, theme.spacing.xl)
+        .frame(maxWidth: 560)
+        .frame(maxWidth: .infinity)
+    }
+
+    /// One document: a small drawing of it, its name and a line about it. A tap
+    /// picks it.
+    private func row(for type: DocumentType, palette: CaptureScreens.Palette) -> some View {
+        Button {
+            selected = type
+            onSelect(type)
+        } label: {
+            HStack(spacing: theme.spacing.md) {
+                DocumentThumbnail(type: type, palette: palette)
+                    .frame(width: 76, height: 56)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(Self.title(for: type))
+                        .font(theme.typography.body(size: 18).weight(.semibold))
+                        .foregroundStyle(palette.text)
+                    Text(Self.detail(for: type))
+                        .font(theme.typography.body(size: 14))
+                        .foregroundStyle(palette.secondaryText)
+                }
+                Spacer(minLength: theme.spacing.sm)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(palette.secondaryText)
+            }
+            .padding(theme.spacing.md)
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(palette.card)
+                    .shadow(color: .black.opacity(scheme == .dark ? 0 : 0.06), radius: 12, y: 4)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(
+                        selected == type ? theme.colors.primary : palette.cardLine,
+                        lineWidth: selected == type ? 2 : 1)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(CaptureLayout.PressStyle())
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(selected == type ? [.isButton, .isSelected] : .isButton)
+    }
+
+    /// A line under each type's name.
+    nonisolated static func detail(for type: DocumentType) -> String {
+        switch type {
+        case .passport: return "Scan the photo page"
+        case .idCard: return "Government-issued photo ID"
+        case .driversLicense: return "Issued by a province or state"
+        case .auto: return "Any photo ID"
+        }
     }
 
     /// The user-facing label for each type.
@@ -154,5 +182,37 @@ public struct DocumentTypePicker: View {
 #Preview {
     DocumentTypePicker { type in
         print("selected: \(type)")
+    }
+}
+
+/// A small drawing of a document for the picker: a card, or a passport booklet.
+struct DocumentThumbnail: View {
+    @Environment(\.theme) private var theme
+    let type: DocumentType
+    let palette: CaptureScreens.Palette
+
+    var body: some View {
+        Group {
+            if type == .passport {
+                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    .fill(theme.colors.primary)
+                    .overlay(
+                        VStack(spacing: 4) {
+                            Image(systemName: "globe")
+                                .font(.system(size: 18, weight: .medium))
+                            Capsule().frame(width: 18, height: 2.5)
+                        }
+                        .foregroundStyle(.white.opacity(0.85))
+                    )
+                    .frame(width: 40, height: 54)
+            } else {
+                CaptureScreens.CardFace(back: false, palette: palette)
+                    .frame(width: 190, height: 120)
+                    .scaleEffect(0.4)
+                    .frame(width: 76, height: 48)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityHidden(true)
     }
 }

@@ -64,6 +64,12 @@ enum CaptureStage: Sendable, Equatable {
         }
     }
 
+    /// The least time the stage stays on screen once shown, so the flip
+    /// animation plays through even when the card is turned at once.
+    var minimumShow: TimeInterval {
+        self == .flip ? 1.6 : 0
+    }
+
     /// Stages that tell the user something is wrong, for a warning haptic.
     var isProblem: Bool {
         switch self {
@@ -115,6 +121,7 @@ struct CaptureStagePresenter: Sendable, Equatable {
     static let settle: TimeInterval = 0.5
 
     private(set) var shown: CaptureStage
+    private var shownSince: TimeInterval?
     private var candidate: CaptureStage?
     private var candidateSince: TimeInterval = 0
 
@@ -125,21 +132,27 @@ struct CaptureStagePresenter: Sendable, Equatable {
     /// Offers the stage the capture is in at `now`; returns the stage to show.
     @discardableResult
     mutating func update(_ next: CaptureStage, at now: TimeInterval) -> CaptureStage {
+        let since = shownSince ?? now
+        shownSince = since
         if next == shown {
             candidate = nil
         } else if next.isImmediate {
-            shown = next
-            candidate = nil
+            show(next, at: now)
         } else {
             if candidate != next {
                 candidate = next
                 candidateSince = now
             }
-            if now - candidateSince >= Self.settle - 1e-9 {
-                shown = next
-                candidate = nil
-            }
+            let held = now - candidateSince >= Self.settle - 1e-9
+            let shownLongEnough = now - since >= shown.minimumShow - 1e-9
+            if held, shownLongEnough { show(next, at: now) }
         }
         return shown
+    }
+
+    private mutating func show(_ stage: CaptureStage, at now: TimeInterval) {
+        shown = stage
+        shownSince = now
+        candidate = nil
     }
 }

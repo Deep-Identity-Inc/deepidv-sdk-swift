@@ -30,6 +30,22 @@ private final class ScriptedDetector: DetectSending, @unchecked Sendable {
     }
 }
 
+/// Passes frames to `inner`; holds probes (no frame number) until cancelled.
+private final class SlowProbes: DetectSending, @unchecked Sendable {
+    private let inner: ScriptedDetector
+    private let lock = NSLock()
+    private var _probes = 0
+    init(_ inner: ScriptedDetector) { self.inner = inner }
+    var probesStarted: Int { lock.withLock { _probes } }
+
+    func detect(_ request: DetectRequest) async throws -> DetectResponse {
+        guard request.frame == nil else { return try await inner.detect(request) }
+        lock.withLock { _probes += 1 }
+        try await Task.sleep(nanoseconds: 3_600_000_000_000)
+        return .failure(DetectFailure(status: 0, reason: .failed))
+    }
+}
+
 /// Never answers, until cancelled.
 private struct SilentDetector: DetectSending {
     func detect(_ request: DetectRequest) async throws -> DetectResponse {
@@ -311,6 +327,25 @@ private func run(
         bytes(report.photo) == Data([0xFF, 0xD8, 0x01, 0xEE]), "the photo is turned right way up")
     let frames = try #require(report.classification?.frames)
     #expect(frames.contains { $0.decision == FrameDiagnostic.probeDecision })
+}
+
+@MainActor @Test func aSlowProbeNeverHoldsUpTheNextFrame() async {
+    let clock = ManualClock()
+    // Frames don't confirm, so probing starts; a probe then takes as long as the
+    // test lets it.
+    let detector = ScriptedDetector { request, _ in card("us_tx_dl", 0.3) }
+    let slow = SlowProbes(detector)
+    let scanner = makeScanner(slow, clock: clock)
+    for i in 0..<8 {
+        let frame = CameraFrame(index: i, syntheticQuality: good)
+        scanner.observe(frame, quality: good, framed: true, visionReady: true, at: clock.now)
+        for _ in 0..<5 { try? await Task.sleep(nanoseconds: 10_000_000) }
+        clock.now += 0.6
+    }
+    let normal = detector.requests.filter { $0.frame != nil }.count
+    #expect(slow.probesStarted == 1, "one probe at a time")
+    #expect(normal >= 6, "frames kept going while the probe was out (\(normal) sent)")
+    scanner.stop()
 }
 
 @MainActor @Test func whileAProbeBeatsTheFramesTheUserIsAskedToTurnTheCard() async {

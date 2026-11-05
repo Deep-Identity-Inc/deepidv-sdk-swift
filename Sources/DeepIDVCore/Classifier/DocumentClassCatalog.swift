@@ -2,8 +2,9 @@
 
 /// The broad kind of a classifier document class.
 ///
-/// Only kinds are shown to the user ("Driver's licence ✓"), never per-class
-/// names, so no label table ships with the SDK.
+/// The capture screen names a recognised document by its region and kind
+/// ("Ontario Driver's Licence"), built from the class id; see
+/// `DocumentClassCatalog.label(of:)`.
 package enum DocumentClassKind: String, Sendable, Equatable, CaseIterable {
     case driversLicence
     case idCard

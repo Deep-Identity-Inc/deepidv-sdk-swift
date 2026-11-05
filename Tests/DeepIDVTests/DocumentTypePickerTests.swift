@@ -22,10 +22,7 @@ import Testing
 @MainActor @Test func phase5ViewsInstantiate() {
     let client = DeepIDVClient(apiKey: "sk_test")
     _ = DocumentTypePicker { _ in }
-    _ = CaptureOverlayView(
-        instruction: "Scan the front of your document",
-        stage: .holdStill, manualShutterVisible: true,
-        isProcessing: false, permissionDenied: false)
+    _ = CaptureOverlayView(stage: .holdStill, manualShutterVisible: true)
     _ = DocumentScannerView(client: client, documentType: .passport) { _ in }
     #expect(DocumentTypePicker.pickableTypes.count == 3)
 }

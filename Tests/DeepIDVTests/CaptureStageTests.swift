@@ -73,3 +73,107 @@ private let settle = CaptureStagePresenter.settle
     #expect(CaptureStage.processing.defaultText == nil)
     #expect(CaptureStage.flip.defaultText == "Now turn it over to scan the back")
 }
+
+@Test func theFlipStaysUpLongEnoughToSeeItTurn() {
+    var presenter = CaptureStagePresenter(.captured)
+    #expect(presenter.update(.flip, at: 10) == .flip)
+    // The card left the frame at once and the back is in view: still the flip.
+    presenter.update(.findDocument, at: 10.1)
+    #expect(presenter.update(.findDocument, at: 11.5) == .flip)
+    #expect(presenter.update(.findDocument, at: 11.6) == .findDocument)
+}
+
+// MARK: - Copy
+
+@Test func theWordsFollowTheDocumentAndSide() {
+    let licence = CaptureCopy.Context(documentType: .driversLicense, isFinalSide: false)
+    #expect(CaptureCopy.lines(for: .findDocument, in: licence).title == "Fill the frame with your licence")
+    #expect(CaptureCopy.lines(for: .findDocument, in: licence).subtitle == CaptureCopy.automatic)
+    let back = CaptureCopy.Context(documentType: .driversLicense, isBack: true, isFinalSide: true)
+    #expect(
+        CaptureCopy.lines(for: .findDocument, in: back).title
+            == "Fill the frame with the back of your licence")
+    let passport = CaptureCopy.Context(documentType: .passport)
+    #expect(
+        CaptureCopy.lines(for: .findDocument, in: passport).title
+            == "Fill the frame with your passport photo page")
+    #expect(CaptureCopy.lines(for: .captured, in: licence).title == "Front captured")
+    #expect(CaptureCopy.lines(for: .captured, in: back).title == "All done!")
+    #expect(CaptureCopy.lines(for: .flip, in: licence).title == "Now show the back of your licence")
+}
+
+@Test func everyStageHasATitle() {
+    let stages: [CaptureStage] = [
+        .findDocument, .adjust(.turnToLandscape), .adjust(.moveCloser), .adjust(.fitInFrame),
+        .adjust(.reduceGlare), .checking, .turnOver, .wrongDocument(.passport), .healthCard,
+        .holdStill, .captured, .flip, .processing,
+    ]
+    for type in [DocumentType.driversLicense, .idCard, .passport] {
+        for stage in stages {
+            let title = CaptureCopy.lines(for: stage, in: .init(documentType: type)).title
+            #expect(!title.isEmpty, "\(stage) \(type)")
+        }
+    }
+    #expect(CaptureCopy.encryption == "Protected by TripleLock® Encryption System")
+}
+
+@Test func theRecognisedDocumentIsNamed() {
+    #expect(ShownDocument(id: "ca_on_dl", confirmed: true).label == "Ontario Driver's Licence")
+    #expect(ShownDocument(id: "nope", confirmed: false).label == nil)
+}
+
+// MARK: - Layout
+
+@Test func theWindowFitsTheScreenAndKeepsTheDocumentShape() {
+    for size in [CGSize(width: 1366, height: 1024), CGSize(width: 1024, height: 1366),
+                 CGSize(width: 393, height: 852), CGSize(width: 852, height: 393)] {
+        for aspect in [1.586, 1.42] as [CGFloat] {
+            let window = CaptureLayout.window(in: size, aspect: aspect)
+            #expect(abs(window.width / window.height - aspect) < 0.001)
+            #expect(window.width <= size.width * CaptureLayout.maxWindowWidth + 0.001)
+            #expect(window.height <= size.height * CaptureLayout.maxWindowHeight + 0.001)
+            #expect(window.minX >= 0 && window.maxX <= size.width)
+            #expect(abs(window.midX - size.width / 2) < 0.001)
+        }
+    }
+}
+
+// MARK: - "Close enough" follows the drawn frame
+
+@Test func aCardThatFillsTheDrawnFrameIsCloseEnough() {
+    // iPad landscape: the window is drawn on 1366×1024, over a 4∶3 camera frame.
+    let size = CGSize(width: 1366, height: 1024)
+    let window = CaptureLayout.window(in: size, aspect: 1.586)
+    let share = Double(window.width / size.width)
+    let fill = DocumentCaptureAnalyzer.guideFill(
+        widthShare: share, screenAspect: Double(size.width / size.height),
+        frameAspect: 4.0 / 3.0, share: DocumentCaptureTunables().guideFillShare)
+    var analyzer = DocumentCaptureAnalyzer(documentType: .driversLicense)
+    analyzer.guideFill = fill
+    // A card across 90% of the drawn window passes the distance check …
+    let filling = CaptureQuality(
+        documentDetected: true, fillRatio: share * 0.9,
+        aspectRatio: 1.586, sharpness: 300, glareRatio: 0)
+    #expect(analyzer.assess(filling) == nil)
+    // … one across half of it is still asked to come closer.
+    var far = filling
+    far.fillRatio = share * 0.5
+    #expect(analyzer.assess(far) == .moveCloser)
+}
+
+@Test func theDrawnFrameNeverAsksForMoreThanTheDefault() {
+    var analyzer = DocumentCaptureAnalyzer(documentType: .driversLicense)
+    #expect(analyzer.minFill == DocumentCaptureTunables().minFillRatio)
+    analyzer.guideFill = 0.9
+    #expect(analyzer.minFill == DocumentCaptureTunables().minFillRatio)
+    analyzer.guideFill = 0.4
+    #expect(analyzer.minFill == 0.4)
+}
+
+@Test func aNarrowScreenSeesLessOfTheCameraFrame() {
+    // A phone in portrait shows the middle of a 3∶4 frame: the window's share of
+    // the screen is a smaller share of the frame.
+    let fill = DocumentCaptureAnalyzer.guideFill(
+        widthShare: 0.8, screenAspect: 393.0 / 852.0, frameAspect: 3.0 / 4.0, share: 1)
+    #expect(abs(fill - 0.8 * (393.0 / 852.0) / 0.75) < 1e-9)
+}

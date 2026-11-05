@@ -49,6 +49,9 @@ final class DocumentClassifierScanner: DocumentClassifying {
     private(set) var rotation = 0
     private var frameNumber = 0
     private var call: Task<Void, Never>?
+    /// The wrong-way probe in flight. It runs beside the normal calls, so
+    /// checking for an upside-down card never holds up reading a right-way one.
+    private var probeCall: Task<Void, Never>?
     private var nextCallAt: TimeInterval = 0
     private var failedOver = false
     private var gaveUpWaiting = false
@@ -169,17 +172,25 @@ final class DocumentClassifierScanner: DocumentClassifying {
         return FrontCaptureReport(photo: main, classification: classification, extraFrames: extras)
     }
 
+    var shownDocument: ShownDocument? {
+        guard isActive, let chip = lastStep?.chip else { return nil }
+        return ShownDocument(id: chip.doc.id, confirmed: !chip.pending)
+    }
+
     func stop() {
         stopped = true
         call?.cancel()
         call = nil
+        probeCall?.cancel()
+        probeCall = nil
     }
 
     /// Waits for the call and the frame copies in flight. For tests.
     func settle() async {
-        while let task = call ?? keeping.values.first {
+        while let task = call ?? probeCall ?? keeping.values.first {
             await task.value
             if call == task { call = nil }
+            if probeCall == task { probeCall = nil }
             keeping = keeping.filter { $0.value != task }
         }
     }
@@ -211,9 +222,17 @@ final class DocumentClassifierScanner: DocumentClassifying {
             guard let response = try? await self.detector.detect(request), !Task.isCancelled,
                 self.isActive
             else { return }
+            // A probe turned the scan while this frame was out: its answer is for
+            // the old way round, so it says nothing now.
+            guard self.rotation == rotation else {
+                self.call = nil
+                return
+            }
             self.handle(response, quality: quality, frameGood: frameGood, startedAt: startedAt)
-            if self.isActive, self.picked != .passport, self.wrongWay.probeDue(at: self.clock()) {
-                await self.probe(prepared)
+            if self.isActive, self.picked != .passport, self.probeCall == nil,
+                self.wrongWay.probeDue(at: self.clock())
+            {
+                self.startProbe(prepared)
             }
             if !Task.isCancelled { self.call = nil }
         }
@@ -255,7 +274,15 @@ final class DocumentClassifierScanner: DocumentClassifying {
     }
 
     /// Sends the same frame turned the other way, to catch a card held upside down.
+    private func startProbe(_ prepared: PreparedFrame) {
+        probeCall = Task { [weak self] in
+            await self?.probe(prepared)
+            if !Task.isCancelled { self?.probeCall = nil }
+        }
+    }
+
     private func probe(_ prepared: PreparedFrame) async {
+        let sentRotation = rotation
         let turned = (rotation + 180) % 360
         let imaging = self.imaging
         let image: String? = await Task.detached {
@@ -264,12 +291,13 @@ final class DocumentClassifierScanner: DocumentClassifying {
         guard let image,
             let response = try? await detector.detect(
                 DetectRequest(imageB64: image, scanID: scanID, method: method)),
-            !Task.isCancelled, isActive
+            !Task.isCancelled, isActive, rotation == sentRotation
         else { return }
         availability.record(response)
         let now = clock()
         pacing.record(response)
-        nextCallAt = max(nextCallAt, now + pacing.wait(afterCallTaking: 0))
+        // Only a backoff (a rate limit, a failing gateway) slows the normal calls.
+        if pacing.backoff > 0 { nextCallAt = max(nextCallAt, now + pacing.backoff) }
         wrongWay.recordProbe(response.outcome, at: now)
         frames.addProbe(response.outcome, at: now, rotation: turned)
         if wrongWay.flip {

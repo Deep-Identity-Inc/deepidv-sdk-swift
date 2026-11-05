@@ -16,6 +16,9 @@ private final class FakeClassifier: DocumentClassifying {
     private(set) var observed = 0
     private(set) var captures: [Bool] = []
     private(set) var stopped = false
+    var shown: ShownDocument?
+
+    var shownDocument: ShownDocument? { shown }
 
     init(_ verdict: ClassifierVerdict) {
         self.verdict = verdict
@@ -85,7 +88,7 @@ private func makeCapture(
         authorizer: Authorized(),
         tunables: .init(
             stabilityFrameCount: 2, holdStillDuration: 0, sideCapturedDisplay: 0,
-            classifierHoldDuration: 0, steadyCaptureDuration: 0,
+            doneDisplay: 0, classifierHoldDuration: 0, steadyCaptureDuration: 0,
             sharpnessWindow: sharpnessWindow, sharpnessWaitLimit: sharpnessWaitLimit),
         classifier: classifier,
         usesClassifierRules: rules,
@@ -274,6 +277,26 @@ private func makeCapture(
     #expect(spy.completed.first?.back == nil)
     #expect(classifier.captures == [false])
     #expect(spy.reports.count == 1)
+}
+
+@MainActor @Test func theRecognisedDocumentAndThePhotoReachTheScreen() async {
+    let spy = CaptureSpy()
+    let classifier = FakeClassifier(.go)
+    classifier.shown = ShownDocument(id: "ca_on_dl", confirmed: true)
+    let model = makeCapture(
+        type: .driversLicense, captureMode: .frontOnly, qualities: [good, good],
+        classifier: classifier, spy: spy)
+    #expect(model.isFinalSide)
+    await model.run()
+    #expect(model.shownDocument?.label == "Ontario Driver's Licence")
+    #expect(spy.completed.count == 1)
+}
+
+@MainActor @Test func aTwoSidedCardIsOnlyFinalOnItsBack() {
+    let model = makeCapture(
+        type: .driversLicense, qualities: [], classifier: nil, spy: CaptureSpy())
+    #expect(model.hasBack)
+    #expect(!model.isFinalSide)
 }
 
 @MainActor @Test func theScreenEndsOnTheProcessingStage() async {

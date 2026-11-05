@@ -25,6 +25,28 @@ struct DocumentCaptureAnalyzer: Sendable {
     /// The gating thresholds.
     let tunables: DocumentCaptureTunables
 
+    /// The fill the on-screen frame asks for, as a share of the camera frame's
+    /// width, when it is less than `tunables.minFillRatio`: a card that fills the
+    /// drawn frame is close enough, however large the frame is drawn.
+    var guideFill: Double?
+
+    /// The fill a frame needs to count as close enough.
+    var minFill: Double {
+        guard let guideFill, guideFill > 0 else { return tunables.minFillRatio }
+        return min(tunables.minFillRatio, guideFill)
+    }
+
+    /// The fill that covers `share` of a frame drawn `widthShare` of the screen
+    /// wide, as a share of a camera frame `frameAspect` (width ÷ height) wide,
+    /// under a preview that fills a screen `screenAspect` wide.
+    static func guideFill(
+        widthShare: Double, screenAspect: Double, frameAspect: Double, share: Double
+    ) -> Double {
+        // Aspect-fill crops the camera frame's width when the screen is narrower.
+        let visible = frameAspect > 0 ? min(1, screenAspect / frameAspect) : 1
+        return widthShare * visible * share
+    }
+
     /// Consecutive fully-passing frames seen so far. Exposed read-only for tests
     /// and overlay debugging; reset to zero whenever a gate fails.
     private(set) var consecutiveGoodFrames = 0
@@ -53,7 +75,7 @@ struct DocumentCaptureAnalyzer: Sendable {
         guard quality.documentDetected else { return .searching }
         // Before distance: a sideways card is narrow, so it reads as too far away.
         if isSideways(quality) { return .turnToLandscape }
-        if quality.fillRatio < tunables.minFillRatio { return .moveCloser }
+        if quality.fillRatio < minFill { return .moveCloser }
         if !aspectMatches(quality.aspectRatio) { return .fitDocumentInFrame }
         if quality.glareRatio > tunables.maxGlareRatio { return .reduceGlare }
         if checksSharpness, quality.sharpness < tunables.minSharpness { return .holdSteady }
@@ -65,7 +87,7 @@ struct DocumentCaptureAnalyzer: Sendable {
     /// card that is a little soft or still moving, and the capture hold checks both.
     func isFramed(_ quality: CaptureQuality) -> Bool {
         quality.documentDetected && !isSideways(quality)
-            && quality.fillRatio >= tunables.minFillRatio
+            && quality.fillRatio >= minFill
             && aspectMatches(quality.aspectRatio) && quality.glareRatio <= tunables.maxGlareRatio
     }
 

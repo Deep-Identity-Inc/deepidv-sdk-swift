@@ -94,7 +94,8 @@ private func makeModel(
         // the analyzer's first `.capture` — keeps these frame-driven tests deterministic.
         // sideCapturedDisplay 0: skip the per-side confirmation flash so the flow
         // doesn't sleep between sides.
-        tunables: .init(stabilityFrameCount: 4, holdStillDuration: 0, sideCapturedDisplay: 0),
+        tunables: .init(stabilityFrameCount: 4, holdStillDuration: 0, sideCapturedDisplay: 0,
+            doneDisplay: 0),
         complete: { front, back, type in try await scanSpy.scan(front, back, type) },
         onResult: { resultSpy.result = $0 })
 }

@@ -93,6 +93,11 @@ struct DocumentCaptureTunables: Sendable, Equatable {
     /// the user has framed it close and roughly centered, not caught it drifting.
     var minFillRatio: Double = 0.55
 
+    /// How much of the on-screen frame's width the card must cover to be close
+    /// enough. The frame can be drawn smaller than `minFillRatio` of the camera's
+    /// view (it is on an iPad); this keeps "fill the frame" achievable there.
+    var guideFillShare: Double = 0.75
+
     /// Absolute tolerance on the per-type target aspect ratio. Tight enough to
     /// reject a steeply-angled or mis-shaped frame, loose enough for normal
     /// perspective.
@@ -143,6 +148,9 @@ struct DocumentCaptureTunables: Sendable, Equatable {
     /// before the flow advances to the back (or to processing). Purely a display
     /// beat — kept here so tests can zero it out and not wait on it.
     var sideCapturedDisplay: TimeInterval = 0.9
+
+    /// How long the done screen stays up after the last side is captured.
+    var doneDisplay: TimeInterval = 1.4
 
     /// The hold before auto-capture when the document classifier is in play: the
     /// on-device checks must pass on every frame this long once the classifier

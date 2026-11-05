@@ -104,8 +104,8 @@ let config = DeepIDVConfig(
     maxRetries: 3,           // 429 / 5xx
     initialRetryDelay: 0.5,  // backoff base, seconds
     uploadTimeout: 120,      // upload per-attempt seconds
-    documentCamera: .back,   // .front for kiosks where the user holds the ID up to the screen
-    showsDocumentCaptureIntro: true   // false to skip the framing-tips intro and open the camera directly
+    documentCamera: .front,   // the default; .back on a phone pointed at the ID
+    showsDocumentCaptureIntro: false  // the default; true shows a framing-tips intro before the camera
 )
 let client = DeepIDVClient(config: config)
 ```

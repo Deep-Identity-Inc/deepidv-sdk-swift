@@ -5,9 +5,9 @@ import Foundation
 /// Which camera the document-capture step opens.
 @nonexhaustive
 public enum DocumentCamera: String, Sendable, Equatable {
-    /// The rear camera (default) — the user points the device at the document.
+    /// The rear camera — the user points the device at the document.
     case back
-    /// The front camera — for fixed kiosks / stands where the user holds the
+    /// The front camera (default) — for fixed kiosks / stands where the user holds the
     /// document up to the screen. Stills are captured un-mirrored so OCR sees
     /// the document as printed.
     case front
@@ -27,11 +27,13 @@ public struct DeepIDVConfig: Sendable, Equatable {
     public var initialRetryDelay: TimeInterval
     /// Per-attempt timeout for S3 uploads — separate from `timeout`.
     public var uploadTimeout: TimeInterval
-    /// Camera used by the document-capture views. Defaults to `.back`.
+    /// Camera used by the document-capture views. Defaults to `.front`, for
+    /// kiosks and tablets where the user holds the ID up to the screen; use
+    /// `.back` on a phone pointed at the ID.
     public var documentCamera: DocumentCamera
     /// Whether the document-capture views show the short framing-tips intro
-    /// before opening the camera. Defaults to `true`; kiosks that give their
-    /// own instructions can turn it off to go straight to the viewfinder.
+    /// before opening the camera. Defaults to `false`: the camera screen gives
+    /// its own instructions.
     public var showsDocumentCaptureIntro: Bool
     /// Whether ID card capture in workflow sessions uses deepidv's document
     /// classifier when it's available, to recognise the card, catch one held
@@ -46,8 +48,8 @@ public struct DeepIDVConfig: Sendable, Equatable {
         maxRetries: Int? = nil,
         initialRetryDelay: TimeInterval? = nil,
         uploadTimeout: TimeInterval? = nil,
-        documentCamera: DocumentCamera = .back,
-        showsDocumentCaptureIntro: Bool = true,
+        documentCamera: DocumentCamera = .front,
+        showsDocumentCaptureIntro: Bool = false,
         usesDocumentClassifier: Bool = true
     ) {
         self.apiKey = apiKey

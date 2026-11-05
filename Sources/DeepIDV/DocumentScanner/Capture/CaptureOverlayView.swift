@@ -4,293 +4,277 @@ import DeepIDVCore
 import SwiftUI
 import UIKit
 
-/// The camera overlay drawn on top of the live preview: the dimmed scrim
-/// with a cut-out document guide, the side pill (front / back), the live
-/// hint, the per-side success checkmark, the auto-capture-timeout manual shutter,
-/// a cancel affordance, and the permission-denied CTA.
+/// Everything drawn over the live camera while a document is captured.
 ///
-/// Deliberately camera-free — it takes plain values and callbacks, never a
-/// `CameraController` — so it renders in previews and instantiates in tests on any
-/// platform. All color/typography/spacing comes from `@Environment(\.theme)`; the
-/// only opacities are derived from grey tokens, never raw literals.
+/// One instruction at a time: the ``CaptureStage`` picks the screen and its
+/// words. While scanning, the camera shows through a document-shaped window in
+/// a dark frosted surround, with the instruction above, the recognised document
+/// on the window's edge and the encryption note below. A captured side freezes in
+/// the window; turning to the back and finishing get screens of their own.
+///
+/// Camera-free: it takes plain values and callbacks, so it renders in previews
+/// and tests. Colors, type and spacing come from `@Environment(\.theme)`.
 struct CaptureOverlayView: View {
     @Environment(\.theme) private var theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    let instruction: String
-    /// The one instruction on screen (see ``CaptureStage``).
+    /// The one instruction on screen.
     let stage: CaptureStage
-    let manualShutterVisible: Bool
-    let isProcessing: Bool
-    let permissionDenied: Bool
-    /// The pill label for the side being captured (e.g. "Front of your ID"), or
-    /// `nil` to hide it.
-    var sideLabel: String? = nil
-    /// When `true`, the guide is replaced by a full-screen success checkmark — the
-    /// brief confirmation flashed after each side locks.
-    var sideCaptured: Bool = false
-    /// 0–1 fill of the capture progress ring on the guide (the hold-still dwell, D8).
+    /// What is being captured, for the wording.
+    var context = CaptureCopy.Context(documentType: .driversLicense)
+    /// The document the classifier names, if any.
+    var document: ShownDocument? = nil
+    /// The photo just taken, frozen in the window while a side is confirmed.
+    var capturedImage: UIImage? = nil
+    /// 0–1 progress of the hold before the photo.
     var holdProgress: Double = 0
-    /// Width ÷ height of the guide cut-out: the 1.586∶1 ID-1 card, or the
-    /// 1.42∶1 passport photo page.
+    var manualShutterVisible = false
+    var permissionDenied = false
+    /// Width ÷ height of the window: the 1.586∶1 ID-1 card, or the 1.42∶1
+    /// passport photo page.
     var guideAspect: CGFloat = 1.586
     var onManualCapture: () -> Void = {}
     var onCancel: () -> Void = {}
     var onOpenSettings: () -> Void = {}
+    /// Reports where the window is drawn: its width as a share of the screen's,
+    /// and the screen's width ÷ height.
+    var onGuideChange: (_ widthShare: Double, _ screenAspect: Double) -> Void = { _, _ in }
 
-    /// Whether the live guide (scrim + frame + pill + hint) is on screen — i.e.
-    /// none of the takeover states (permission, processing, success) is showing.
-    private var isGuiding: Bool {
-        !permissionDenied && !isProcessing && !sideCaptured
-    }
+    @State private var showsHelp = false
 
     var body: some View {
         ZStack {
-            // The scrim + guide + takeover states span the full screen (under the
-            // safe area) so the shading covers the entire preview. Everything here
-            // shares one full-screen coordinate space, so the cut-out and the
-            // visible frame stay aligned.
-            GeometryReader { geo in
-                let guide = guideRect(in: geo.size)
-
-                ZStack {
-                    if isGuiding {
-                        scrim(cutout: guide)
-                        guideFrame(in: guide)
-                        if let sideLabel {
-                            sidePill(sideLabel)
-                                .position(x: geo.size.width / 2, y: guide.minY - theme.spacing.xl)
-                        }
-                        if let text = stage.defaultText {
-                            hint(text)
-                                .position(x: geo.size.width / 2, y: guide.maxY + theme.spacing.lg)
-                        }
-                    } else if sideCaptured {
-                        // Full-bleed confirmation so the checkmark reads cleanly
-                        // over the (now irrelevant) live preview.
-                        theme.colors.grey.s50
-                        successCheckmark
-                    } else if isProcessing {
-                        // Clean upload screen that covers the frozen preview.
-                        theme.colors.grey.s50
-                        processing
-                    } else if permissionDenied {
-                        permissionCTA
-                    }
+            if permissionDenied {
+                CaptureScreens.Permission(onOpenSettings: onOpenSettings)
+            } else {
+                switch screen {
+                case .camera:
+                    cameraScreen
+                        .transition(.opacity)
+                case .flip:
+                    CaptureScreens.Flip(copy: copy, documentType: context.documentType)
+                        .transition(.opacity)
+                case .done:
+                    CaptureScreens.Done(
+                        copy: copy, image: capturedImage, aspect: guideAspect, analyzing: false)
+                        .transition(.opacity)
+                case .processing:
+                    CaptureScreens.Done(
+                        copy: copy, image: capturedImage, aspect: guideAspect, analyzing: true)
+                        .transition(.opacity)
                 }
             }
-            .ignoresSafeArea()
-            .onChange(of: stage) { Self.announce($0) }
+            if screen == .camera || permissionDenied {
+                chrome
+            }
+        }
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: screen)
+        .onChange(of: stage) { announce($0) }
+        .sheet(isPresented: $showsHelp) { CaptureScreens.Help(onDone: { showsHelp = false }) }
+    }
 
-            // Chrome (cancel up top, manual shutter at the bottom) is shown only
-            // over the live camera — the takeover states own the whole screen.
-            if isGuiding || permissionDenied {
-                VStack {
-                    topBar
+    // MARK: - Screens
+
+    private enum Screen: Equatable {
+        case camera, flip, done, processing
+    }
+
+    private var screen: Screen {
+        switch stage {
+        case .flip: return .flip
+        case .processing: return .processing
+        case .captured where context.isFinalSide: return .done
+        default: return .camera
+        }
+    }
+
+    private var copy: CaptureCopy { CaptureCopy.lines(for: stage, in: context) }
+
+    // MARK: - Camera screen
+
+    private var cameraScreen: some View {
+        GeometryReader { geo in
+            let window = CaptureLayout.window(in: geo.size, aspect: guideAspect)
+            ZStack {
+                CaptureLayout.Surround(window: window, cornerRadius: CaptureLayout.radius)
+
+                CaptureLayout.Window(
+                    rect: window, tone: tone,
+                    pulses: stage == .findDocument && !reduceMotion,
+                    image: stage == .captured ? capturedImage : nil)
+
+                instruction
+                    .frame(width: min(geo.size.width - theme.spacing.lg * 2, 640))
+                    .position(x: geo.size.width / 2, y: window.minY - 64)
+
+                if let pill {
+                    CaptureLayout.Pill(pill: pill)
+                        .position(x: geo.size.width / 2, y: window.minY)
+                        .transition(.scale(scale: 0.9).combined(with: .opacity))
+                }
+
+                encryptionNote
+                    .position(x: geo.size.width / 2, y: window.maxY + 32)
+            }
+            .animation(
+                reduceMotion ? nil : .spring(response: 0.35, dampingFraction: 0.85), value: pill)
+            .onAppear { reportGuide(in: geo.size) }
+            .onChange(of: geo.size) { reportGuide(in: $0) }
+        }
+        .ignoresSafeArea()
+    }
+
+    private func reportGuide(in size: CGSize) {
+        guard size.width > 0, size.height > 0 else { return }
+        let window = CaptureLayout.window(in: size, aspect: guideAspect)
+        onGuideChange(Double(window.width / size.width), Double(size.width / size.height))
+    }
+
+    /// The title and subtitle, cross-fading when the stage changes.
+    private var instruction: some View {
+        VStack(spacing: theme.spacing.sm) {
+            Text(copy.title)
+                .font(theme.typography.heading(size: 26).weight(.semibold))
+                .foregroundStyle(theme.colors.grey.s50)
+            if let subtitle = copy.subtitle {
+                Text(subtitle)
+                    .font(theme.typography.body(size: 16))
+                    .foregroundStyle(theme.colors.grey.s50.opacity(0.72))
+            }
+        }
+        .multilineTextAlignment(.center)
+        .lineLimit(2)
+        .minimumScaleFactor(0.8)
+        .shadow(color: .black.opacity(0.35), radius: 8, y: 1)
+        .id(copy)
+        .transition(.opacity)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.25), value: copy)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.updatesFrequently)
+    }
+
+    private var encryptionNote: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "lock.fill")
+                .font(.system(size: 12, weight: .semibold))
+            Text(CaptureCopy.encryption)
+                .font(theme.typography.body(size: 13).weight(.medium))
+        }
+        .foregroundStyle(theme.colors.grey.s50.opacity(0.78))
+        .accessibilityElement(children: .combine)
+    }
+
+    // MARK: - Chrome
+
+    /// Close at the top, the progress bar, the shutter and help at the bottom.
+    private var chrome: some View {
+        VStack(spacing: 0) {
+            ZStack {
+                if !permissionDenied {
+                    CaptureLayout.ProgressBar(progress: progress, tone: tone)
+                        .frame(width: 140)
+                        .opacity(showsProgress ? 1 : 0)
+                }
+                HStack {
+                    CaptureLayout.RoundButton(symbol: "xmark", label: "Cancel", action: onCancel)
                     Spacer()
-                    if isGuiding { bottomBar }
                 }
-                .padding(theme.spacing.lg)
+            }
+            Spacer()
+            if !permissionDenied {
+                ZStack(alignment: .bottomTrailing) {
+                    if manualShutterVisible {
+                        shutter.frame(maxWidth: .infinity)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                    CaptureLayout.RoundButton(
+                        symbol: "questionmark", label: "Help with scanning",
+                        action: { showsHelp = true })
+                }
+                .frame(maxWidth: .infinity, alignment: .bottomTrailing)
+                .animation(
+                    reduceMotion ? nil : .easeOut(duration: 0.3), value: manualShutterVisible)
             }
         }
+        .padding(.horizontal, theme.spacing.lg)
+        .padding(.vertical, theme.spacing.md)
     }
 
-    // MARK: - Geometry
+    /// The progress bar shows while checking (moving) and holding still (filling).
+    private var showsProgress: Bool {
+        stage == .checking || stage == .holdStill
+    }
 
-    /// The centred guide rectangle, inset from the horizontal edges and sized to
-    /// `guideAspect`, at most `maxGuideHeight` of the screen so the pill and the
-    /// hint keep room above and below it. Shared by the scrim cut-out and the
-    /// visible frame so they always line up.
-    private func guideRect(in size: CGSize) -> CGRect {
-        var width = size.width - theme.spacing.lg * 2
-        var height = width / guideAspect
-        if height > size.height * Self.maxGuideHeight {
-            height = size.height * Self.maxGuideHeight
-            width = height * guideAspect
+    /// The progress bar's fill: the hold while holding still, `nil` (moving) while
+    /// checking.
+    private var progress: Double? {
+        stage == .holdStill ? holdProgress : nil
+    }
+
+    private var shutter: some View {
+        VStack(spacing: theme.spacing.sm + 2) {
+            Text("Having trouble? Take the photo yourself")
+                .font(theme.typography.body(size: 14).weight(.medium))
+                .foregroundStyle(theme.colors.grey.s50)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(Capsule().fill(Color.black.opacity(0.45)))
+            Button(action: onManualCapture) {
+                ZStack {
+                    Circle().fill(theme.colors.grey.s50).frame(width: 62, height: 62)
+                    Circle().strokeBorder(theme.colors.grey.s50, lineWidth: 4)
+                        .frame(width: 78, height: 78)
+                }
+            }
+            .buttonStyle(CaptureLayout.PressStyle())
+            .accessibilityLabel("Take photo")
         }
-        return CGRect(
-            x: (size.width - width) / 2, y: (size.height - height) / 2, width: width,
-            height: height)
     }
 
-    /// The tallest the guide gets, as a share of the screen height.
-    static let maxGuideHeight: CGFloat = 0.7
+    // MARK: - State
 
-    // MARK: - Sections
-
-    /// Dims everything outside the guide so the document area stands out. A single
-    /// even-odd fill (full rect minus the rounded cut-out).
-    private func scrim(cutout: CGRect) -> some View {
-        CutoutScrim(hole: cutout, cornerRadius: theme.spacing.md)
-            .fill(theme.colors.grey.s900.opacity(0.6), style: FillStyle(eoFill: true))
-    }
-
-    private func guideFrame(in rect: CGRect) -> some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: theme.spacing.md, style: .continuous)
-                .strokeBorder(theme.colors.primary, lineWidth: 3)
-            // Fills around the guide as the user holds still; completing the loop
-            // is the moment of capture.
-            RoundedRectangle(cornerRadius: theme.spacing.md, style: .continuous)
-                .trim(from: 0, to: holdProgress)
-                .stroke(theme.colors.success, style: StrokeStyle(lineWidth: 4, lineCap: .round))
-                .animation(.linear(duration: 0.1), value: holdProgress)
+    /// The window's color for the stage.
+    private var tone: CaptureLayout.Tone {
+        switch stage {
+        case .findDocument: return .idle
+        case .adjust, .checking: return .active
+        case .turnOver, .wrongDocument: return .warning
+        case .healthCard: return .error
+        case .holdStill, .captured, .flip, .processing: return .success
         }
-        .frame(width: rect.width, height: rect.height)
-        .position(x: rect.midX, y: rect.midY)
     }
 
-    /// The prominent white pill calling out which side to present.
-    private func sidePill(_ label: String) -> some View {
-        Text(label)
-            .font(theme.typography.button(size: 15))
-            .foregroundStyle(theme.colors.grey.s900)
-            .padding(.horizontal, theme.spacing.md)
-            .padding(.vertical, theme.spacing.sm)
-            .background(theme.colors.grey.s50)
-            .clipShape(Capsule())
-            .shadow(color: theme.colors.grey.s900.opacity(0.25), radius: 8, y: 2)
-    }
-
-    private func hint(_ text: String) -> some View {
-        Text(text)
-            .multilineTextAlignment(.center)
-            .font(theme.typography.body())
-            .foregroundStyle(theme.colors.grey.s50)
-            .padding(.horizontal, theme.spacing.md)
-            .padding(.vertical, theme.spacing.sm)
-            .background(theme.colors.grey.s900.opacity(0.6))
-            .clipShape(Capsule())
-            .padding(.horizontal, theme.spacing.lg)
-            .accessibilityAddTraits(.updatesFrequently)
+    /// The label on the window's edge: what the classifier recognised, or what's
+    /// wrong with it.
+    private var pill: CaptureLayout.PillModel? {
+        switch stage {
+        case .wrongDocument(let kind):
+            return .init(text: DocumentClassCatalog.kindLabel(kind), style: .warning)
+        case .healthCard:
+            return .init(text: "Health card", style: .error)
+        case .findDocument, .adjust, .checking, .turnOver, .holdStill:
+            guard let document, let label = document.label else { return nil }
+            return .init(text: label, style: document.confirmed ? .confirmed : .pending)
+        case .captured, .flip, .processing:
+            return nil
+        }
     }
 
     /// Tells VoiceOver about a new stage, with a haptic when a side is captured or
     /// the document is the wrong one.
-    private static func announce(_ stage: CaptureStage) {
+    private func announce(_ stage: CaptureStage) {
+        let lines = CaptureCopy.lines(for: stage, in: context)
         if stage == .captured {
             UINotificationFeedbackGenerator().notificationOccurred(.success)
-            UIAccessibility.post(notification: .announcement, argument: "Captured")
-        } else if let text = stage.defaultText {
-            if stage.isProblem {
-                UINotificationFeedbackGenerator().notificationOccurred(.warning)
-            }
-            UIAccessibility.post(notification: .announcement, argument: text)
+        } else if stage.isProblem {
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
         }
+        let spoken = [lines.title, lines.subtitle].compactMap { $0 }.joined(separator: ". ")
+        UIAccessibility.post(notification: .announcement, argument: spoken)
     }
-
-    /// The per-side success checkmark (a primary ring around a primary tick).
-    private var successCheckmark: some View {
-        ZStack {
-            Circle()
-                .strokeBorder(theme.colors.primary, lineWidth: 6)
-                .frame(width: 96, height: 96)
-            Image(systemName: "checkmark")
-                .font(.system(size: 44, weight: .bold))
-                .foregroundStyle(theme.colors.primary)
-        }
-        .accessibilityLabel("Captured")
-    }
-
-    private var topBar: some View {
-        HStack {
-            Button(action: onCancel) {
-                Text("Cancel")
-                    .font(theme.typography.button())
-                    .foregroundStyle(theme.colors.grey.s50)
-            }
-            Spacer()
-            if isGuiding {
-                Text(instruction)
-                    .font(theme.typography.body())
-                    .foregroundStyle(theme.colors.grey.s50)
-                    .multilineTextAlignment(.center)
-                Spacer()
-                // Balances the leading Cancel button so the instruction stays centered.
-                Text("Cancel")
-                    .font(theme.typography.button())
-                    .foregroundStyle(.clear)
-            }
-        }
-    }
-
-    /// The post-capture upload screen: a centred spinner over a short reassurance,
-    /// on a clean full-screen background (no camera, no chrome).
-    private var processing: some View {
-        VStack(spacing: theme.spacing.lg) {
-            ProgressView()
-                .progressViewStyle(.circular)
-                .tint(theme.colors.primary)
-                .scaleEffect(1.4)
-            VStack(spacing: theme.spacing.sm) {
-                Text("Almost there")
-                    .font(theme.typography.heading(size: 20))
-                    .foregroundStyle(theme.colors.grey.s900)
-                Text("Please wait while we process your document…")
-                    .font(theme.typography.body())
-                    .foregroundStyle(theme.colors.grey.s600)
-                    .multilineTextAlignment(.center)
-            }
-        }
-        .padding(theme.spacing.xl)
-    }
-
-    private var permissionCTA: some View {
-        VStack(spacing: theme.spacing.md) {
-            Text("Camera access is off")
-                .font(theme.typography.heading(size: 18))
-                .foregroundStyle(theme.colors.grey.s50)
-            Text("Enable camera access in Settings to scan your document.")
-                .font(theme.typography.body())
-                .foregroundStyle(theme.colors.grey.s300)
-                .multilineTextAlignment(.center)
-            Button(action: onOpenSettings) {
-                Text("Open Settings")
-                    .font(theme.typography.button(size: 16))
-                    .foregroundStyle(theme.colors.grey.s50)
-                    .padding(.horizontal, theme.spacing.lg)
-                    .padding(.vertical, theme.spacing.sm)
-                    .background(theme.colors.primary)
-                    .clipShape(RoundedRectangle(cornerRadius: theme.spacing.sm))
-            }
-        }
-        .padding(theme.spacing.lg)
-    }
-
-    private var bottomBar: some View {
-        // The manual shutter appears only once auto-capture has timed out.
-        ZStack {
-            if manualShutterVisible {
-                Button(action: onManualCapture) {
-                    Circle()
-                        .fill(theme.colors.grey.s50)
-                        .frame(width: 64, height: 64)
-                        .overlay(
-                            Circle().strokeBorder(theme.colors.primary, lineWidth: 4)
-                        )
-                }
-                .accessibilityLabel("Capture")
-            }
-        }
-        .frame(height: 72)
-    }
-
-    // MARK: - Hint mapping
 
     /// The instruction a live guidance hint shows.
     static func hintText(for guidance: CaptureGuidance) -> String {
         CaptureStage(guidance).defaultText ?? ""
-    }
-}
-
-/// A full-area fill with a rounded-rectangle hole, used (with an even-odd fill)
-/// to dim everything around the document guide.
-private struct CutoutScrim: Shape {
-    let hole: CGRect
-    let cornerRadius: CGFloat
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path(rect)
-        path.addRoundedRect(in: hole, cornerSize: CGSize(width: cornerRadius, height: cornerRadius))
-        return path
     }
 }

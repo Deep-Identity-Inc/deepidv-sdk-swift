@@ -219,7 +219,7 @@ final class IDVerificationStepFlowModel: ObservableObject {
                     "This workflow does not provide a supported document type."))
             return
         }
-        phase = .selectingType(index: 0)
+        beginSelection(at: 0)
     }
 
     func selectDocumentType(_ documentType: DocumentType) {
@@ -288,7 +288,7 @@ final class IDVerificationStepFlowModel: ObservableObject {
         if let kept = selections[nextSlot] {
             phase = capturePhase(slot: nextSlot, option: kept)
         } else {
-            phase = .selectingType(index: nextIndex)
+            beginSelection(at: nextIndex)
         }
     }
 
@@ -337,7 +337,7 @@ final class IDVerificationStepFlowModel: ObservableObject {
             }
             documentUploadKeys.removeAll()
             extraFrameKeys.removeAll()
-            phase = .selectingType(index: index)
+            beginSelection(at: index)
 
         case .retakeDocument:
             let index = slotIndex(for: failure?.slot)
@@ -372,7 +372,16 @@ final class IDVerificationStepFlowModel: ObservableObject {
         frontReports.removeAll()
         documentUploadKeys.removeAll()
         extraFrameKeys.removeAll()
-        phase = .selectingType(index: 0)
+        beginSelection(at: 0)
+    }
+
+    /// Asks for the document type of the slot at `index`, or, when the workflow
+    /// allows only one type, picks it without asking.
+    private func beginSelection(at index: Int) {
+        phase = .selectingType(index: index)
+        if documentTypeOptions.count == 1, let only = documentTypeOptions.first {
+            selectDocumentType(only.documentType)
+        }
     }
 
     /// The position of the document a failure is attributed to. A failure

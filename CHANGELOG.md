@@ -15,8 +15,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   auto-captures a health card (the shutter still works). Frames go to the
   same API host as the rest of the session.
   `DeepIDVConfig.usesDocumentClassifier` (default `true`) turns it off.
+- Passports auto-capture: the photo page is captured once it has been in
+  view and steady for 1.5 s, and the frame on screen is shaped like the
+  photo page.
+- A card held sideways is asked to be turned to landscape.
+- The document-capture screen is redesigned: one instruction at a time, a
+  frame that changes color as the capture goes, the recognised document's
+  name on the frame ("Ontario Driver's Licence"), a turn-it-over screen for
+  documents with a back, a done screen, a tips sheet and VoiceOver
+  announcements with haptics. Light and dark appearance follow the system.
+- The auto-capture "close enough" check follows the frame drawn on screen, so
+  a card that fills the frame is always close enough.
 
 ### Changed
+
+- **Behavior:** `DeepIDVConfig.documentCamera` now defaults to `.front`, for
+  kiosks and tablets. Pass `.back` to keep the rear camera on a phone.
+- **Behavior:** `DeepIDVConfig.showsDocumentCaptureIntro` now defaults to
+  `false`. Pass `true` to keep the intro screen.
+- The upside-down check runs beside the normal reads instead of before them,
+  so it no longer slows down capturing a card held the right way up.
+- The document-type picker is skipped when the workflow allows only one
+  document type, and is redesigned as a list of tappable rows.
 
 ## [1.2.1] - 2026-10-13
 

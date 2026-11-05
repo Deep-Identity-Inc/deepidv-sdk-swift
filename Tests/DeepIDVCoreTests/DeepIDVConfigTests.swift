@@ -12,8 +12,8 @@ import Testing
     #expect(config.maxRetries == 3)
     #expect(config.initialRetryDelay == 0.5)  // 500ms
     #expect(config.uploadTimeout == 120)  // 120_000ms
-    #expect(config.documentCamera == .back)
-    #expect(config.showsDocumentCaptureIntro == true)
+    #expect(config.documentCamera == .front)
+    #expect(config.showsDocumentCaptureIntro == false)
 }
 
 @Test func configDefaultsMatchStaticConstants() {
