@@ -248,8 +248,12 @@ struct VisionDocumentFrameEvaluator: DocumentFrameEvaluating {
     /// per-frame metric pass and the still-capture quad lookup
     /// (``DocumentStillEncoder``), so both see the same document the same way.
     static func detectObservation(in pixelBuffer: CVPixelBuffer) -> VNRectangleObservation? {
-        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:])
+        detectObservation(using: VNImageRequestHandler(cvPixelBuffer: pixelBuffer, options: [:]))
+    }
 
+    /// The same detection over any image the handler wraps (the full-resolution
+    /// still, for the upload crop).
+    static func detectObservation(using handler: VNImageRequestHandler) -> VNRectangleObservation? {
         let segmentation = VNDetectDocumentSegmentationRequest()
         if (try? handler.perform([segmentation])) != nil,
             let result = segmentation.results?.first

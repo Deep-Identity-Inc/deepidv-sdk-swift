@@ -57,7 +57,19 @@ extension DocumentImageProcessor {
         maxDimension: CGFloat = defaultMaxDimension,
         jpegQuality: CGFloat = defaultJPEGQuality
     ) throws -> FileInput {
-        var image = CIImage(cvPixelBuffer: pixelBuffer)
+        try process(
+            CIImage(cvPixelBuffer: pixelBuffer), correctingTo: quad,
+            maxDimension: maxDimension, jpegQuality: jpegQuality)
+    }
+
+    /// The same over any upright image, such as the decoded full-resolution still.
+    static func process(
+        _ source: CIImage,
+        correctingTo quad: DocumentQuad? = nil,
+        maxDimension: CGFloat = defaultMaxDimension,
+        jpegQuality: CGFloat = defaultJPEGQuality
+    ) throws -> FileInput {
+        var image = source
 
         // 1. Perspective-correct to the document quad. Vision's normalized,
         //    bottom-left corners map into the image's pixel extent.
