@@ -83,6 +83,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   screen, with a small margin, instead of sending the whole camera view.
   Nothing outside the frame, such as the person holding the card, is sent.
   The cut keeps the camera's own pixels: nothing is enlarged or turned.
+- Two extra frames of each card front, taken just before the photo and cut to
+  the same frame, go with the ID step once the document classifier has
+  answered. The server reads them only for an expiry date or date of birth
+  the photo left blank, and deletes them afterwards.
 
 ## [1.2.1] - 2026-10-13
 

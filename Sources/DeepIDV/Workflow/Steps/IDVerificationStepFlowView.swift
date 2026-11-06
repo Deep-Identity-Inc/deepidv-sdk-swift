@@ -26,7 +26,10 @@ struct IDVerificationStepFlowView: View {
                 requirements: requirements,
                 classifier: usesClassifier
                     ? IDVerificationStepFlowModel.ClassifierSetup(
-                        availability: ClassifierAvailability(),
+                        // Extra frames of each card front, which the server reads for a
+                        // date the photo left blank. A server that answers the
+                        // classifier accepts them too (they shipped together).
+                        availability: ClassifierAvailability(sendsExtraFrames: true),
                         make: { type, availability in
                             DocumentClassifierScanner(
                                 documentType: type,

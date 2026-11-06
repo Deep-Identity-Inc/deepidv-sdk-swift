@@ -86,7 +86,8 @@ final class ClassifierAvailability {
 
     private(set) var state: State = .unknown
 
-    /// Extra frames are only sent once the server reads them. Off until then.
+    /// Whether extra frames of each card front go with the submission. Like the
+    /// classifier's fields, only once the classifier has answered.
     let sendsExtraFrames: Bool
 
     init(sendsExtraFrames: Bool = false) {
