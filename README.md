@@ -201,8 +201,10 @@ DeepIDVWorkflowView(client: client, sessionID: sessionID) { result in /* … */ 
 - When a step ends the run with an error, the view shows an error screen and
   reports `.failure` once the applicant closes it. Connectivity and server
   faults also offer **Try again**, which continues from the current step.
-- The final verification decision is made server-side after the run and isn't
-  part of the result; read it from your backend.
+- When the workflow decides automatically, `sessionStatus` already reads
+  `.verified` or `.rejected`. Otherwise the decision is made server-side
+  after the run (for example in manual review); read it from your backend or
+  the webhooks.
 - `DeepIDVWorkflowView(client:sessionID:onResult:)` only runs a session that
   has never been submitted to: one that has already started, or is terminal,
   fails with `.conflict`. To continue a started session, resume it.
@@ -442,7 +444,7 @@ client.makeReVerifyView(workflowID: "wf_…", email: user.email) { result in
         // Not re-verified — show your own copy for `reason`.
         print("not re-verified:", reason)
     case .failure(let error):
-        // `.cancelled` means the view was dismissed before an outcome.
+        // `.cancelled` means it was closed or dismissed before an outcome.
         print("re-verification error:", error.kind)
     }
 }
@@ -458,8 +460,8 @@ client.makeReVerifyView(workflowID: "wf_…", email: user.email) { result in
 - **One sitting.** A failed match or liveness check starts a new challenge in
   place, with guidance and the remaining-attempts count. Network and capture
   errors offer **Try again** (re-running only the call that failed) and
-  **Close**. There is no cancel control during capture: dismiss the view to
-  cancel.
+  **Close**. The close button (shown while it gets ready and during the face
+  check) ends it with `.cancelled`, as does dismissing the view.
 
 **Results.** `onResult` fires exactly once, with one of:
 
@@ -471,7 +473,7 @@ client.makeReVerifyView(workflowID: "wf_…", email: user.email) { result in
 | `.success(.failed(reason: .notEligible(_)))`                      | Re-verification can't run at all. Ends immediately with no retry; never fixable by the applicant (reasons below).                                                                                                  |
 | `.success(.failed(reason: .expired))`                             | The re-verification expired or had already ended before a decision. Present the view again to start a new one.                                                                                                     |
 | `.failure(DeepIDVError)`                                          | An error the applicant closed on the view's error screen, or a blank `email` (kind `.validation`, ends immediately with no screen).                                                                                |
-| `.failure(DeepIDVError)`, kind `.cancelled`                       | The view was dismissed before an outcome.                                                                                                                                                                          |
+| `.failure(DeepIDVError)`, kind `.cancelled`                       | The close button was tapped, or the view was dismissed, before an outcome.                                                                                                                                         |
 
 `.notEligible(_)` carries one of:
 

@@ -52,8 +52,8 @@ public struct DeepIDVConfig: Sendable, Equatable {
     /// screen before ``DeepIDVWorkflowView`` reports its result. The screen is
     /// the same whatever the decision, so it never tells the user whether
     /// they passed; your app gets the decision in the result. It closes on its
-    /// own after a moment, or when tapped. Defaults to `true`; turn it off to
-    /// go straight back to your app.
+    /// own after a moment, or with its Done button. Defaults to `true`; turn it
+    /// off to go straight back to your app.
     public var showsCompletionScreen: Bool
     /// The language of the SDK's screens. `nil` (the default) follows the
     /// device: the first of the user's preferred languages the SDK has, or

@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-06
+
+A redesigned capture experience: recognized ID cards and passports, one
+instruction at a time, brand styling, English, Spanish and French, and ID
+photos cut to the capture frame.
+
+### Upgrading from 1.2
+
+- `DeepIDVConfig.documentCamera` now defaults to `.front`. On a phone, pass
+  `.back` to keep the rear camera.
+- `DeepIDVConfig.showsDocumentCaptureIntro` now defaults to `false`. Pass
+  `true` to keep the intro screen.
+- A submitted workflow run ends on a thank-you screen before `onResult`.
+  `DeepIDVConfig.showsCompletionScreen = false` turns it off.
+- `sessionStatus` reads `.verified` / `.rejected` where it read
+  `AUTO_APPROVE` / `DECLINED`. Update any code that compares the raw value.
+- The re-verification view has its own close button. Remove any Cancel button
+  your app drew over it.
+- If your app proxies the SDK's requests through your own backend, forward
+  `POST /v1/sessions/{id}/id-capture/detect` too. Without it, the document
+  classifier turns itself off and capture falls back to on-device checks.
+
 ### Added
 
 - ID card capture in workflow sessions uses deepidv's document classifier
@@ -33,7 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   preparing, submitting (with the ID and selfie just taken), try again, errors,
   camera access, and the liveness result.
 - A workflow run that is submitted ends on a short thank-you screen ("We've
-  received your details"), which closes on its own after 3 s or when tapped,
+  received your details"), which closes on its own after 3 s or with its Done button,
   then reports the result. It looks the same whatever the decision, so it
   never tells the user whether they passed.
   `DeepIDVConfig.showsCompletionScreen` (default `true`) turns it off.
@@ -87,10 +109,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (4032 x 3024), instead of the camera's default size, so the card's small
   print reads better. A camera with more (48 MP) is still used at 12 MP. The
   selfie and face-liveness photos are unchanged.
-- Two extra frames of each card front, taken just before the photo and cut to
-  the same frame, go with the ID step once the document classifier has
-  answered. The server reads them only for an expiry date or date of birth
-  the photo left blank, and deletes them afterwards.
+- Two extra frames of each card front and passport photo page, taken just
+  before the photo and cut to the same frame, go with the ID step once the
+  document classifier has answered. The server reads them only for an expiry
+  date or date of birth the photo left blank, or an expiry date it read as
+  past, and deletes them afterwards.
 
 ## [1.2.1] - 2026-10-13
 
@@ -218,7 +241,10 @@ Initial public release.
 - Typed errors (`DeepIDVError`) and camera-permission handling with a Settings
   deep link.
 
-[Unreleased]: https://github.com/Deep-Identity-Inc/deepidv-sdk-swift/compare/1.1.0...HEAD
+[Unreleased]: https://github.com/Deep-Identity-Inc/deepidv-sdk-swift/compare/1.3.0...HEAD
+[1.3.0]: https://github.com/Deep-Identity-Inc/deepidv-sdk-swift/compare/1.2.1...1.3.0
+[1.2.1]: https://github.com/Deep-Identity-Inc/deepidv-sdk-swift/compare/1.2.0...1.2.1
+[1.2.0]: https://github.com/Deep-Identity-Inc/deepidv-sdk-swift/compare/1.1.0...1.2.0
 [1.1.0]: https://github.com/Deep-Identity-Inc/deepidv-sdk-swift/compare/1.0.2...1.1.0
 [1.0.2]: https://github.com/Deep-Identity-Inc/deepidv-sdk-swift/compare/1.0.1...1.0.2
 [1.0.1]: https://github.com/Deep-Identity-Inc/deepidv-sdk-swift/compare/1.0.0...1.0.1
