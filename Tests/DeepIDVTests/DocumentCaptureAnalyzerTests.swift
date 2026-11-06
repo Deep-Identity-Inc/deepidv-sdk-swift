@@ -99,6 +99,17 @@ private func passingQuality(at center: CGPoint) -> CaptureQuality {
     }
 }
 
+@Test func aCardInFramesTurnedFromTheScreenIsNeverAskedToTurn() {
+    // A landscape iPad whose camera still delivers portrait frames: a card
+    // held the right way looks tall in the frame.
+    var analyzer = DocumentCaptureAnalyzer(documentType: .driversLicense)
+    analyzer.framesTurnedFromScreen = true
+    var card = passingQuality(for: .driversLicense)
+    card.isPortrait = true
+    #expect(analyzer.assess(card) == nil)
+    #expect(analyzer.isFramed(card))
+}
+
 @Test func anUprightPassportBookletIsNeverAskedToTurn() {
     let analyzer = DocumentCaptureAnalyzer(documentType: .passport)
     var booklet = passingQuality(for: .passport)

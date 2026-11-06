@@ -30,6 +30,14 @@ struct DocumentCaptureAnalyzer: Sendable {
     /// drawn frame is close enough, however large the frame is drawn.
     var guideFill: Double?
 
+    /// Whether the camera frames are turned from the screen: landscape frames
+    /// under a portrait screen, or the reverse. The camera's turn is set when it
+    /// starts, so this happens when the device is turned mid-scan, or held in
+    /// landscape on iOS 15 and 16, whose frames are always portrait. A card's
+    /// shape in such a frame says nothing about how it is held on screen, so
+    /// it is never asked to be turned.
+    var framesTurnedFromScreen = false
+
     /// The fill a frame needs to count as close enough.
     var minFill: Double {
         guard let guideFill, guideFill > 0 else { return tunables.minFillRatio }
@@ -129,7 +137,7 @@ struct DocumentCaptureAnalyzer: Sendable {
     /// A card held with its long side up and down. Not for a passport: the open
     /// booklet is often taller than it is wide, and only its page is read.
     private func isSideways(_ quality: CaptureQuality) -> Bool {
-        quality.isPortrait && documentType != .passport
+        quality.isPortrait && documentType != .passport && !framesTurnedFromScreen
     }
 
     /// Euclidean distance between two normalized points.

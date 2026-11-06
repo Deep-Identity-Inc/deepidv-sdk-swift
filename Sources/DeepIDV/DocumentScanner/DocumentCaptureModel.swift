@@ -383,6 +383,8 @@ final class DocumentCaptureModel<Output>: ObservableObject {
             analyzer.guideFill = DocumentCaptureAnalyzer.guideFill(
                 widthShare: Double(guide.rect.width), screenAspect: guide.screenAspect,
                 frameAspect: aspect, share: tunables.guideFillShare)
+            analyzer.framesTurnedFromScreen =
+                aspect > 0 && (aspect >= 1) != (guide.screenAspect >= 1)
         }
         let quality = evaluator.quality(of: frame, for: documentType)
         lastQuality = quality
