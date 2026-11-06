@@ -289,13 +289,22 @@ final class DocumentCaptureModel<Output>: ObservableObject {
             }
             if isCancelled { return }
 
+            // Cutting and re-encoding a full-size photo takes a while: off the
+            // main actor, so the screen doesn't freeze while it runs.
             var input: FileInput
             do {
-                input = try encoder.encode(captured, documentType: documentType, window: guide)
+                let encoder = self.encoder
+                let documentType = self.documentType
+                let window = guide
+                input = try await Task.detached {
+                    try encoder.encode(captured, documentType: documentType, window: window)
+                }.value
             } catch {
+                if isCancelled { return }
                 finishCaptureFailed(error, fallback: "Unable to process the captured image.")
                 return
             }
+            if isCancelled { return }
 
             if !capturingBack {
                 let report =
