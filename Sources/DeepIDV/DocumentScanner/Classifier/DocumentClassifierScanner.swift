@@ -67,7 +67,8 @@ final class DocumentClassifierScanner: DocumentClassifying {
     private var keeping: [Int: Task<Void, Never>] = [:]
     private var keepCount = 0
     private var lastKeptAt: TimeInterval?
-    private var frameWidth: Int?
+    /// The size of the video frames, which the photo is scored against.
+    private var frameSize: CGSize?
 
     init(
         documentType: DocumentType,
@@ -147,9 +148,10 @@ final class DocumentClassifierScanner: DocumentClassifying {
         var spares = picked.extras.map(\.frame)
         if let best = picked.main {
             let imaging = self.imaging
-            let frameWidth = self.frameWidth ?? 0
+            let frameSize = self.frameSize ?? .zero
+            let window = self.window
             let stillSharpness = await Task.detached {
-                imaging.sharpness(of: photo, frameWidth: frameWidth)
+                imaging.sharpness(of: photo, frameSize: frameSize, window: window)
             }.value
             if CaptureFramePicker.prefersKeptFrame(
                 stillSharpness: stillSharpness, keptSharpness: best.sharpness)
@@ -332,7 +334,10 @@ final class DocumentClassifierScanner: DocumentClassifying {
         guard quality.documentDetected else { return }
         if let lastKeptAt, now - lastKeptAt < CaptureFramePicker.interval - 1e-9 { return }
         lastKeptAt = now
-        if let pixelBuffer = frame.pixelBuffer { frameWidth = CVPixelBufferGetWidth(pixelBuffer) }
+        if let pixelBuffer = frame.pixelBuffer {
+            frameSize = CGSize(
+                width: CVPixelBufferGetWidth(pixelBuffer), height: CVPixelBufferGetHeight(pixelBuffer))
+        }
         let imaging = self.imaging
         let window = self.window
         let sharpness = quality.sharpness

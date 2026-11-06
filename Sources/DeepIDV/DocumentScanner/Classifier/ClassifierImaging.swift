@@ -28,8 +28,9 @@ protocol ClassifierImaging: Sendable {
     /// the card when the frame isn't known.
     func keptFrame(_ frame: CameraFrame, window: CaptureWindow?) -> FileInput?
     /// The photo's sharpness on the same scale as the video frames, which are
-    /// `frameWidth` pixels wide. `nil` when it can't be measured.
-    func sharpness(of photo: FileInput, frameWidth: Int) -> Double?
+    /// `frameSize` pixels big and were cut to `window` when kept. `nil` when it
+    /// can't be measured.
+    func sharpness(of photo: FileInput, frameSize: CGSize, window: CaptureWindow?) -> Double?
     /// The photo turned 180°.
     func turnedOver(_ photo: FileInput) -> FileInput?
 }
@@ -56,6 +57,28 @@ enum ClassifierImages {
         }
         return box.insetBy(dx: -box.width * detectMargin, dy: -box.height * detectMargin)
             .intersection(unit)
+    }
+
+    /// The width the photo is scaled to before it is scored, so the card in it is
+    /// as many pixels across as in a video frame `frameSize` big: the capture
+    /// frame's width in that video frame when the photo was cut to the frame, or
+    /// the video frame's whole width when the photo was sent whole. A photo cut
+    /// to the frame and scaled to the whole width would be enlarged, and score
+    /// lower than it is.
+    static func scoringWidth(photoSize: CGSize, frameSize: CGSize, window: CaptureWindow?)
+        -> CGFloat
+    {
+        guard frameSize.width > 0, frameSize.height > 0 else { return 0 }
+        guard let window, photoSize.width > 0, photoSize.height > 0,
+            let crop = DocumentStillEncoder.cropRect(
+                for: window, in: CGRect(origin: .zero, size: frameSize))
+        else { return frameSize.width }
+        // The photo was cut when its shape is the frame's, not the camera's.
+        let photoAspect = photoSize.width / photoSize.height
+        let cutAspect = crop.width / crop.height
+        let wholeAspect = frameSize.width / frameSize.height
+        return abs(photoAspect - cutAspect) < abs(photoAspect - wholeAspect)
+            ? crop.width : frameSize.width
     }
 
     /// The bytes of a photo.
@@ -116,12 +139,17 @@ struct CoreImageClassifierImaging: ClassifierImaging {
             jpegQuality: CaptureFramePicker.extraJPEGQuality)
     }
 
-    func sharpness(of photo: FileInput, frameWidth: Int) -> Double? {
-        guard frameWidth > 0, let data = ClassifierImages.data(of: photo),
-            var image = CIImage(data: data, options: [.applyOrientationProperty: true])
+    func sharpness(of photo: FileInput, frameSize: CGSize, window: CaptureWindow?) -> Double? {
+        guard let data = ClassifierImages.data(of: photo),
+            var image = CIImage(data: data, options: [.applyOrientationProperty: true]),
+            image.extent.width > 0
         else { return nil }
-        // Scale to the video frames' width, so both are scored on the same grid.
-        let scale = CGFloat(frameWidth) / image.extent.width
+        // Scale so the card is the size it is in the video frames, so both are
+        // scored on the same grid.
+        let targetWidth = ClassifierImages.scoringWidth(
+            photoSize: image.extent.size, frameSize: frameSize, window: window)
+        guard targetWidth > 0 else { return nil }
+        let scale = targetWidth / image.extent.width
         image = image.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
         let width = Int(image.extent.width.rounded())
         let height = Int(image.extent.height.rounded())

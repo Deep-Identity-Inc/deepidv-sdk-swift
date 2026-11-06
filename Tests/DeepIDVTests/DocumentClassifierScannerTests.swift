@@ -67,7 +67,9 @@ private struct FakeImaging: ClassifierImaging {
     func keptFrame(_ frame: CameraFrame, window: CaptureWindow?) -> FileInput? {
         .data(Data([0x4B, UInt8(frame.index % 256)]))
     }
-    func sharpness(of photo: FileInput, frameWidth: Int) -> Double? { stillSharpness }
+    func sharpness(of photo: FileInput, frameSize: CGSize, window: CaptureWindow?) -> Double? {
+        stillSharpness
+    }
     func turnedOver(_ photo: FileInput) -> FileInput? {
         guard case .data(let data) = photo else { return nil }
         return .data(data + [0xEE])

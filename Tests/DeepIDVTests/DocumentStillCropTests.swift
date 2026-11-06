@@ -3,6 +3,7 @@
 import CoreGraphics
 import Foundation
 import CoreVideo
+import DeepIDVCore
 import ImageIO
 import Testing
 import UIKit
@@ -184,4 +185,111 @@ private func sensorSidePhoto() throws -> Data {
         DocumentStillEncoder.cropRect(for: frame, in: CGRect(x: 0, y: 0, width: 1440, height: 1920)))
     #expect(image.width == Int(crop.width) && image.height == Int(crop.height))
     #expect(image.width > image.height)
+}
+
+// MARK: Scoring the photo against the video frames
+
+private let videoSize = CGSize(width: 720, height: 960)
+
+@Test func aPhotoCutToTheFrameIsScaledToTheFramesWidthInTheVideo() throws {
+    let frame = window(on: CGSize(width: 393, height: 852))
+    let crop = try #require(
+        DocumentStillEncoder.cropRect(for: frame, in: CGRect(origin: .zero, size: videoSize)))
+    let cutPhoto = CGSize(width: crop.width * 2.4, height: crop.height * 2.4)
+    #expect(
+        ClassifierImages.scoringWidth(photoSize: cutPhoto, frameSize: videoSize, window: frame)
+            == crop.width)
+    #expect(crop.width < videoSize.width * 0.75)
+}
+
+@Test func aPhotoSentWholeIsScaledToTheWholeVideoWidth() {
+    let frame = window(on: CGSize(width: 393, height: 852))
+    let wholePhoto = CGSize(width: 3024, height: 4032)
+    #expect(
+        ClassifierImages.scoringWidth(photoSize: wholePhoto, frameSize: videoSize, window: frame)
+            == videoSize.width)
+    #expect(
+        ClassifierImages.scoringWidth(photoSize: wholePhoto, frameSize: videoSize, window: nil)
+            == videoSize.width)
+    #expect(
+        ClassifierImages.scoringWidth(photoSize: wholePhoto, frameSize: .zero, window: frame) == 0)
+}
+
+/// The same printed-looking scene, drawn at any size: small dark marks on a
+/// light page, placed the same way relative to the size.
+private func drawScene(in context: CGContext, size: CGSize) {
+    context.setFillColor(gray: 0.9, alpha: 1)
+    context.fill(CGRect(origin: .zero, size: size))
+    context.setFillColor(gray: 0.1, alpha: 1)
+    var seed: UInt64 = 7
+    func next() -> CGFloat {
+        seed = seed &* 6_364_136_223_846_793_005 &+ 1_442_695_040_888_963_407
+        return CGFloat(seed >> 33) / CGFloat(UInt64(1) << 31)
+    }
+    for _ in 0..<4000 {
+        context.fill(
+            CGRect(
+                x: next() * size.width, y: next() * size.height,
+                width: size.width * 0.008, height: size.width * 0.005))
+    }
+}
+
+private func sceneVideoFrame(_ size: CGSize) throws -> CVPixelBuffer {
+    var buffer: CVPixelBuffer?
+    let attributes = [kCVPixelBufferIOSurfacePropertiesKey: [:]] as CFDictionary
+    #expect(
+        CVPixelBufferCreate(
+            kCFAllocatorDefault, Int(size.width), Int(size.height), kCVPixelFormatType_32BGRA,
+            attributes, &buffer) == kCVReturnSuccess)
+    let pixels = try #require(buffer)
+    CVPixelBufferLockBaseAddress(pixels, [])
+    defer { CVPixelBufferUnlockBaseAddress(pixels, []) }
+    let context = try #require(
+        CGContext(
+            data: CVPixelBufferGetBaseAddress(pixels), width: Int(size.width),
+            height: Int(size.height), bitsPerComponent: 8,
+            bytesPerRow: CVPixelBufferGetBytesPerRow(pixels),
+            space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
+                | CGBitmapInfo.byteOrder32Little.rawValue))
+    drawScene(in: context, size: size)
+    return pixels
+}
+
+private func scenePhoto(_ size: CGSize) throws -> Data {
+    let context = try #require(
+        CGContext(
+            data: nil, width: Int(size.width), height: Int(size.height), bitsPerComponent: 8,
+            bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB)!,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
+    drawScene(in: context, size: size)
+    let image = try #require(context.makeImage())
+    return try #require(UIImage(cgImage: image).jpegData(compressionQuality: 0.95))
+}
+
+@Test func anEquallySharpPhotoIsNotSwappedForAVideoFrame() throws {
+    // An iPhone in portrait, where the frame is about two thirds of the photo's
+    // width: the photo, cut to the frame, must score like the video frame of
+    // the same scene, not as if it were enlarged to the whole video width.
+    let frame = window(on: CGSize(width: 393, height: 852))
+    let video = try sceneVideoFrame(videoSize)
+    let crop = try #require(
+        DocumentStillEncoder.cropRect(for: frame, in: CGRect(origin: .zero, size: videoSize)))
+    let cardBox = CGRect(
+        x: crop.minX / videoSize.width, y: crop.minY / videoSize.height,
+        width: crop.width / videoSize.width, height: crop.height / videoSize.height)
+    let kept = VisionDocumentFrameEvaluator.sharpnessAndGlare(in: video, boundingBox: cardBox)
+        .sharpness
+
+    let photo = try DocumentStillEncoder().encode(
+        CameraFrame(index: 0, imageData: try scenePhoto(CGSize(width: 1512, height: 2016))),
+        documentType: .idCard, window: frame)
+    let imaging = CoreImageClassifierImaging()
+    let still = try #require(imaging.sharpness(of: photo, frameSize: videoSize, window: frame))
+    // Scored as before, at the whole video width.
+    let enlarged = try #require(imaging.sharpness(of: photo, frameSize: videoSize, window: nil))
+
+    #expect(kept > 0)
+    #expect(!CaptureFramePicker.prefersKeptFrame(stillSharpness: still, keptSharpness: kept))
+    #expect(still > enlarged)
 }
