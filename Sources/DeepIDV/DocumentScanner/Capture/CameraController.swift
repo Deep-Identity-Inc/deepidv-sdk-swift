@@ -156,6 +156,10 @@ final class AVFoundationCameraController: NSObject, CameraController, @unchecked
     /// Center Stage as the app had it before this camera turned it off, put
     /// back on `stop()`. Touched only on `sessionQueue`.
     private var savedCenterStage: (mode: AVCaptureDevice.CenterStageControlMode, enabled: Bool)?
+    /// Whether photos are taken at the largest size the camera offers, up to
+    /// ``PhotoSize/maxPixels`` (documents: more pixels for the card's small
+    /// print). Otherwise the preset's default size.
+    private let takesLargestPhotos: Bool
     /// The capture session, exposed so the SwiftUI preview layer can bind to it.
     let session = AVCaptureSession()
     private let videoOutput = AVCaptureVideoDataOutput()
@@ -176,11 +180,12 @@ final class AVFoundationCameraController: NSObject, CameraController, @unchecked
 
     init(
         position: AVCaptureDevice.Position = .back, lockedFrameRate: Int? = nil,
-        allowsCenterStage: Bool = true
+        allowsCenterStage: Bool = true, takesLargestPhotos: Bool = false
     ) {
         self.position = position
         self.lockedFrameRate = lockedFrameRate
         self.allowsCenterStage = allowsCenterStage
+        self.takesLargestPhotos = takesLargestPhotos
         var continuation: AsyncStream<CameraFrame>.Continuation!
         // Liveness: bound the analysis buffer so slow face-detection can't pile up
         // frame copies. Document/selfie keep the unbounded stream (unchanged).
@@ -203,6 +208,7 @@ final class AVFoundationCameraController: NSObject, CameraController, @unchecked
                 do {
                     self.holdCenterStageOff()
                     try self.configureIfNeeded()
+                    self.useLargestPhotosIfWanted()
                     if !self.session.isRunning { self.session.startRunning() }
                     self.applyFrameRateLock()  // must be after startRunning to stick
                     cont.resume()
@@ -265,6 +271,14 @@ final class AVFoundationCameraController: NSObject, CameraController, @unchecked
                 let settings = AVCapturePhotoSettings(format: [
                     AVVideoCodecKey: AVVideoCodecType.jpeg
                 ])
+                if self.takesLargestPhotos {
+                    if #available(iOS 16.0, *) {
+                        settings.maxPhotoDimensions = self.photoOutput.maxPhotoDimensions
+                    } else {
+                        settings.isHighResolutionPhotoEnabled =
+                            self.photoOutput.isHighResolutionCaptureEnabled
+                    }
+                }
                 // Retained here (on `sessionQueue`) until the next capture
                 // replaces it; its completion resumes the continuation once.
                 let delegate = PhotoCaptureDelegate { result in
@@ -343,6 +357,34 @@ final class AVFoundationCameraController: NSObject, CameraController, @unchecked
                 }
             }
             device.unlockForConfiguration()
+        }
+    }
+
+    /// Raises the photo output to the largest size the active format lists, up
+    /// to ``PhotoSize/maxPixels``. Runs after the configuration is committed,
+    /// so the format is the one the session will run with; only a size that
+    /// format lists may be set (any other raises an exception), and nothing is
+    /// changed when it lists none. Touched only on `sessionQueue`.
+    private func useLargestPhotosIfWanted() {
+        guard takesLargestPhotos,
+            let device = (session.inputs.first as? AVCaptureDeviceInput)?.device
+        else { return }
+        if #available(iOS 16.0, *) {
+            let listed = device.activeFormat.supportedMaxPhotoDimensions.map {
+                PhotoSize(width: Int($0.width), height: Int($0.height))
+            }
+            guard let largest = PhotoSize.largest(of: listed),
+                let size = device.activeFormat.supportedMaxPhotoDimensions.first(where: {
+                    Int($0.width) == largest.width && Int($0.height) == largest.height
+                })
+            else { return }
+            photoOutput.maxPhotoDimensions = size
+        } else if device.activeFormat.highResolutionStillImageDimensions.width > 0 {
+            let still = device.activeFormat.highResolutionStillImageDimensions
+            guard PhotoSize(width: Int(still.width), height: Int(still.height)).pixels
+                <= PhotoSize.maxPixels
+            else { return }
+            photoOutput.isHighResolutionCaptureEnabled = true
         }
     }
 

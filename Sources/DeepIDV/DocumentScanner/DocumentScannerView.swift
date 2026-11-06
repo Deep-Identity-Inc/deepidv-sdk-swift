@@ -84,7 +84,8 @@ struct DocumentCaptureFlowView<Output>: View {
                 documentType: documentType,
                 captureMode: captureMode,
                 controller: AVFoundationCameraController(
-                    position: cameraPosition, allowsCenterStage: false),
+                    position: cameraPosition, allowsCenterStage: false,
+                    takesLargestPhotos: true),
                 evaluator: VisionDocumentFrameEvaluator(),
                 encoder: DocumentStillEncoder(),
                 authorizer: SystemCameraAuthorizer(),

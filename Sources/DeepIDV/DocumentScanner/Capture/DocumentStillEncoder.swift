@@ -39,7 +39,10 @@ struct CaptureWindow: Sendable, Equatable {
 /// camera's pixels: nothing is straightened, rotated or enlarged. Only when the
 /// frame isn't known is the photo sent whole.
 struct DocumentStillEncoder: DocumentStillEncoding {
-    var maxDimension: CGFloat = DocumentImageProcessor.defaultMaxDimension
+    /// The longest side uploaded: a 12 MP photo's (``PhotoSize/maxPixels``),
+    /// so a cut of the photo keeps every pixel the camera took.
+    static let stillMaxDimension: CGFloat = 4032
+    var maxDimension: CGFloat = stillMaxDimension
     /// The full-resolution photo is re-encoded close to the camera's own quality.
     var stillJPEGQuality: CGFloat = 0.92
     var jpegQuality: CGFloat = DocumentImageProcessor.defaultJPEGQuality

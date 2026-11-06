@@ -83,6 +83,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   screen, with a small margin, instead of sending the whole camera view.
   Nothing outside the frame, such as the person holding the card, is sent.
   The cut keeps the camera's own pixels: nothing is enlarged or turned.
+- ID photos are taken at the largest size the camera offers, up to 12 MP
+  (4032 x 3024), instead of the camera's default size, so the card's small
+  print reads better. A camera with more (48 MP) is still used at 12 MP. The
+  selfie and face-liveness photos are unchanged.
 - Two extra frames of each card front, taken just before the photo and cut to
   the same frame, go with the ID step once the document classifier has
   answered. The server reads them only for an expiry date or date of birth
