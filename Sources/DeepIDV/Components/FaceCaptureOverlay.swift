@@ -32,6 +32,20 @@ struct FaceCaptureOverlay: View {
     @State private var settled = false
 
     var body: some View {
+        // The drawing runs edge to edge; the close button and shutter keep to
+        // the safe area, clear of the status bar and the home indicator.
+        ZStack {
+            surface
+            chrome
+        }
+        .onAppear {
+            startPulse()
+            withAnimation(.spring(response: 0.7, dampingFraction: 0.85).delay(0.05)) { settled = true }
+        }
+        .onChange(of: tone) { _ in startPulse() }
+    }
+
+    private var surface: some View {
         GeometryReader { geo in
             let oval = Self.oval(in: geo.size, scale: settled || reduceMotion ? 1 : 0.88)
             ZStack {
@@ -54,17 +68,10 @@ struct FaceCaptureOverlay: View {
                 Kit.SecureNote(onCamera: true)
                     .position(x: geo.size.width / 2, y: oval.maxY + 36)
                     .opacity(flashColor == nil ? 1 : 0)
-
-                chrome
             }
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.15), value: flashColor)
         }
         .ignoresSafeArea()
-        .onAppear {
-            startPulse()
-            withAnimation(.spring(response: 0.7, dampingFraction: 0.85).delay(0.05)) { settled = true }
-        }
-        .onChange(of: tone) { _ in startPulse() }
     }
 
     /// A head-shaped oval: 70% of the width up to 460 pt, 1.35 times as tall
