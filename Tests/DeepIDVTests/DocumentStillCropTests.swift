@@ -2,99 +2,186 @@
 
 import CoreGraphics
 import Foundation
+import CoreVideo
+import ImageIO
 import Testing
 import UIKit
 
 @testable import DeepIDV
 
-private let photo = CGSize(width: 2016, height: 1512)
+private let photo = CGRect(x: 0, y: 0, width: 2016, height: 1512)
 
-/// A quad from pixel corners (top-left origin) to Vision's normalized,
-/// bottom-left-origin space.
-private func quad(x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat, in size: CGSize = photo)
-    -> DocumentQuad
-{
-    func n(_ px: CGFloat, _ py: CGFloat) -> CGPoint {
-        CGPoint(x: px / size.width, y: 1 - py / size.height)
-    }
-    return DocumentQuad(
-        topLeft: n(x, y), topRight: n(x + width, y),
-        bottomLeft: n(x, y + height), bottomRight: n(x + width, y + height))
+/// The capture frame for an ID card, as the overlay reports it on a screen of `size`.
+private func window(on size: CGSize, aspect: CGFloat = 1.586) -> CaptureWindow {
+    let rect = CaptureLayout.window(in: size, aspect: aspect)
+    return CaptureWindow(
+        rect: CGRect(
+            x: rect.minX / size.width, y: rect.minY / size.height,
+            width: rect.width / size.width, height: rect.height / size.height),
+        screenAspect: Double(size.width / size.height))
 }
 
-@Test func aCardFillingPartOfThePhotoIsADocument() {
-    // A licence across half the width: about 19% of the photo, 1.59 to 1.
-    #expect(DocumentStillEncoder.isPlausibleDocument(quad(x: 500, y: 450, width: 1000, height: 630), in: photo))
-    // An open passport, 1.4 to 1.
-    #expect(DocumentStillEncoder.isPlausibleDocument(quad(x: 400, y: 300, width: 1100, height: 785), in: photo))
-    // Held upright: the aspect counts either way round.
-    #expect(DocumentStillEncoder.isPlausibleDocument(quad(x: 700, y: 200, width: 630, height: 1000), in: photo))
+private func near(_ a: CGFloat, _ b: CGFloat, within tolerance: CGFloat = 2) -> Bool {
+    abs(a - b) <= tolerance
 }
 
-@Test func somethingSmallOrLongIsNotTakenForTheDocument() {
-    // A light switch: far under 12% of the photo.
-    #expect(!DocumentStillEncoder.isPlausibleDocument(quad(x: 100, y: 100, width: 200, height: 300), in: photo))
-    // A door frame: tall and narrow.
-    #expect(!DocumentStillEncoder.isPlausibleDocument(quad(x: 800, y: 0, width: 500, height: 1500), in: photo))
-    #expect(!DocumentStillEncoder.isPlausibleDocument(quad(x: 0, y: 0, width: 0, height: 0), in: photo))
+@Test func onAScreenShapedLikeThePhotoTheCropIsTheFrameWithItsMargin() throws {
+    // A 4:3 screen shows the 4:3 photo whole.
+    let frame = CaptureWindow(rect: CGRect(x: 0.2, y: 0.25, width: 0.6, height: 0.4), screenAspect: 4.0 / 3)
+    let crop = try #require(DocumentStillEncoder.cropRect(for: frame, in: photo))
+    let m = DocumentStillEncoder.windowMargin
+    #expect(near(crop.width, 2016 * 0.6 * (1 + 2 * m)))
+    #expect(near(crop.height, 1512 * 0.4 * (1 + 2 * m)))
+    #expect(near(crop.midX, 2016 * 0.5))
+    // Core Image runs bottom-up: the frame's centre, 0.45 down the screen, is
+    // 0.55 up the photo.
+    #expect(near(crop.midY, 1512 * 0.55))
 }
 
-@Test func theCropGrowsEvenlyAroundTheCardAndStaysInThePhoto() {
-    let card = quad(x: 500, y: 450, width: 1000, height: 630)
-    let grown = DocumentStillEncoder.expanded(card, by: 0.04)
-    // 4% wider and taller, about the same centre.
-    #expect(abs((grown.topRight.x - grown.topLeft.x) - (card.topRight.x - card.topLeft.x) * 1.04) < 1e-9)
-    #expect(abs((grown.topLeft.y - grown.bottomLeft.y) - (card.topLeft.y - card.bottomLeft.y) * 1.04) < 1e-9)
-    // A card at the edge is kept inside the photo.
-    let edge = DocumentStillEncoder.expanded(quad(x: 0, y: 0, width: 1200, height: 756), by: 0.04)
-    #expect(edge.topLeft.x == 0 && edge.topLeft.y == 1)
+@Test func onAWiderScreenTheCropFollowsWhatThePreviewShowed() throws {
+    // A landscape iPad (1194 x 834) is wider than the 4:3 photo, so the preview
+    // shows the photo's full width and the middle of its height.
+    let screen = CGSize(width: 1194, height: 834)
+    let frame = window(on: screen)
+    let crop = try #require(DocumentStillEncoder.cropRect(for: frame, in: photo))
+    let visibleHeight = 2016 / (1194.0 / 834.0)
+    let scale = 2016 / screen.width
+    let m = DocumentStillEncoder.windowMargin
+    let drawn = CaptureLayout.window(in: screen, aspect: 1.586)
+    #expect(near(crop.width, drawn.width * scale * (1 + 2 * m)))
+    #expect(near(crop.height, drawn.height * scale * (1 + 2 * m)))
+    // Centred across, and the frame's height stays a card's shape.
+    #expect(near(crop.midX, 1008))
+    #expect(near(crop.width / crop.height, 1.586, within: 0.01))
+    #expect(crop.height < visibleHeight)
+    // Well short of the whole photo: what's around the frame is left out.
+    #expect(crop.width < 2016 * 0.8)
+}
+
+@Test func onANarrowerScreenTheSidesOfThePhotoAreLeftOut() throws {
+    // A 16:10 portrait-ish shape narrower than the photo: only the middle of
+    // the photo's width was on screen.
+    let frame = CaptureWindow(rect: CGRect(x: 0.1, y: 0.3, width: 0.8, height: 0.4), screenAspect: 1.2)
+    let crop = try #require(DocumentStillEncoder.cropRect(for: frame, in: photo))
+    let visibleWidth = 1512 * 1.2
+    let m = DocumentStillEncoder.windowMargin
+    #expect(near(crop.width, visibleWidth * 0.8 * (1 + 2 * m)))
+    #expect(near(crop.height, 1512 * 0.4 * (1 + 2 * m)))
+    #expect(near(crop.midX, 1008))
+}
+
+@Test func theCropStaysInsideThePhoto() throws {
+    let frame = CaptureWindow(rect: CGRect(x: 0, y: 0, width: 1, height: 1), screenAspect: 4.0 / 3)
+    #expect(try #require(DocumentStillEncoder.cropRect(for: frame, in: photo)) == photo)
+}
+
+@Test func aPhotoTurnedDifferentlyFromTheScreenIsNotCut() {
+    let portraitScreen = CaptureWindow(rect: CGRect(x: 0.1, y: 0.3, width: 0.8, height: 0.3), screenAspect: 0.7)
+    #expect(DocumentStillEncoder.cropRect(for: portraitScreen, in: photo) == nil)
+    let degenerate = CaptureWindow(rect: .zero, screenAspect: 4.0 / 3)
+    #expect(DocumentStillEncoder.cropRect(for: degenerate, in: photo) == nil)
 }
 
 /// A camera photo: a light card in front of a dark room, with a "face" beside it.
-private func syntheticPhoto(card: CGRect) -> Data {
-    let renderer = UIGraphicsImageRenderer(size: photo, format: {
+private func syntheticPhoto() -> Data {
+    let renderer = UIGraphicsImageRenderer(size: photo.size, format: {
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
         return format
     }())
     return renderer.jpegData(withCompressionQuality: 0.9) { context in
         UIColor(white: 0.12, alpha: 1).setFill()
-        context.fill(CGRect(origin: .zero, size: photo))
-        // The person behind, partly beside the card.
+        context.fill(photo)
         UIColor(red: 0.8, green: 0.65, blue: 0.55, alpha: 1).setFill()
-        context.cgContext.fillEllipse(in: CGRect(x: 1550, y: 150, width: 420, height: 560))
+        context.cgContext.fillEllipse(in: CGRect(x: 1790, y: 100, width: 220, height: 320))
         UIColor(white: 0.95, alpha: 1).setFill()
-        UIBezierPath(roundedRect: card, cornerRadius: 30).fill()
-        UIColor(white: 0.4, alpha: 1).setFill()
-        context.fill(CGRect(x: card.minX + 60, y: card.minY + 120, width: 220, height: 280))
+        UIBezierPath(roundedRect: CGRect(x: 500, y: 450, width: 1000, height: 630), cornerRadius: 30).fill()
     }
 }
 
-@Test func theUploadIsTheCardNotTheWholeView() throws {
-    let card = CGRect(x: 380, y: 420, width: 1100, height: 694)
-    let cropped = try #require(
-        DocumentStillEncoder.croppedToDocument(syntheticPhoto(card: card), maxDimension: 2000, jpegQuality: 0.8))
-    guard case .data(let data) = cropped else {
+@Test func theUploadIsTheFrameTheRightWayUpWithoutTheFaceBesideIt() throws {
+    let screen = CGSize(width: 1194, height: 834)
+    let frame = window(on: screen)
+    let input = try DocumentStillEncoder().encode(
+        CameraFrame(index: 0, imageData: syntheticPhoto()), documentType: .idCard, window: frame)
+    guard case .data(let data) = input else {
         Issue.record("expected JPEG data")
         return
     }
-    let image = try #require(UIImage(data: data))
-    let size = image.size
-    // About the card plus its margin, not the 2016 x 1512 photo.
-    #expect(size.width < 1400 && size.width > 1000)
-    #expect(abs(size.width / size.height - card.width / card.height) < 0.12)
+    let image = try #require(UIImage(data: data)?.cgImage)
+    let crop = try #require(DocumentStillEncoder.cropRect(for: frame, in: photo))
+    // The frame's own pixels: not enlarged, not turned.
+    #expect(image.width == Int(crop.width) && image.height == Int(crop.height))
+    #expect(image.width > image.height)
+    // The "face" at the photo's right edge is outside the cut.
+    #expect(crop.maxX < 1790)
 }
 
-@Test func aPhotoWithNoDocumentIsSentWhole() {
-    let renderer = UIGraphicsImageRenderer(size: CGSize(width: 800, height: 600))
-    let blank = renderer.jpegData(withCompressionQuality: 0.9) { context in
-        UIColor(white: 0.5, alpha: 1).setFill()
-        context.fill(CGRect(x: 0, y: 0, width: 800, height: 600))
+@Test func withoutTheFrameThePhotoIsSentAsTaken() throws {
+    let original = syntheticPhoto()
+    let input = try DocumentStillEncoder().encode(
+        CameraFrame(index: 0, imageData: original), documentType: .idCard, window: nil)
+    guard case .data(let data) = input else {
+        Issue.record("expected JPEG data")
+        return
     }
-    // Vision may call the whole view the document: then the crop is the whole
-    // photo, which is the same as sending it uncropped.
-    guard case .data(let data)? = DocumentStillEncoder.croppedToDocument(blank, maxDimension: 2000, jpegQuality: 0.8)
-    else { return }
-    let size = UIImage(data: data)?.size ?? .zero
-    #expect(size.width >= 760 && size.height >= 570)
+    #expect(data == original)
+}
+
+/// A photo as the camera stores it on a portrait screen: landscape pixels
+/// tagged to be turned 90° clockwise to stand upright.
+private func sensorSidePhoto() throws -> Data {
+    let pixels = try #require(
+        UIGraphicsImageRenderer(size: photo.size, format: {
+            let format = UIGraphicsImageRendererFormat()
+            format.scale = 1
+            return format
+        }()).image { context in
+            UIColor(white: 0.5, alpha: 1).setFill()
+            context.fill(photo)
+        }.cgImage)
+    let data = NSMutableData()
+    let destination = try #require(
+        CGImageDestinationCreateWithData(data, "public.jpeg" as CFString, 1, nil))
+    CGImageDestinationAddImage(
+        destination, pixels, [kCGImagePropertyOrientation: 6] as CFDictionary)
+    #expect(CGImageDestinationFinalize(destination))
+    return data as Data
+}
+
+@Test func aPortraitScreensPhotoIsTurnedUprightBeforeTheCut() throws {
+    let screen = CGSize(width: 834, height: 1194)
+    let frame = window(on: screen)
+    let input = try DocumentStillEncoder().encode(
+        CameraFrame(index: 0, imageData: try sensorSidePhoto()), documentType: .idCard, window: frame)
+    guard case .data(let data) = input else {
+        Issue.record("expected JPEG data")
+        return
+    }
+    let image = try #require(UIImage(data: data)?.cgImage)
+    // Cut from the upright 1512 x 2016 photo, not sent whole, and a card's shape.
+    let upright = CGRect(x: 0, y: 0, width: 1512, height: 2016)
+    let crop = try #require(DocumentStillEncoder.cropRect(for: frame, in: upright))
+    #expect(image.width == Int(crop.width) && image.height == Int(crop.height))
+    #expect(image.width > image.height)
+    #expect(image.width < 1512)
+}
+
+@Test func keptVideoFramesAreCutToTheSameFrame() throws {
+    var buffer: CVPixelBuffer?
+    let attributes = [kCVPixelBufferIOSurfacePropertiesKey: [:]] as CFDictionary
+    #expect(CVPixelBufferCreate(kCFAllocatorDefault, 1440, 1920, kCVPixelFormatType_32BGRA, attributes, &buffer) == kCVReturnSuccess)
+    let pixels = try #require(buffer)
+    let frame = window(on: CGSize(width: 834, height: 1194))
+    let kept = try #require(
+        CoreImageClassifierImaging().keptFrame(CameraFrame(index: 0, pixelBuffer: pixels), window: frame))
+    guard case .data(let data) = kept else {
+        Issue.record("expected JPEG data")
+        return
+    }
+    let image = try #require(UIImage(data: data)?.cgImage)
+    let crop = try #require(
+        DocumentStillEncoder.cropRect(for: frame, in: CGRect(x: 0, y: 0, width: 1440, height: 1920)))
+    #expect(image.width == Int(crop.width) && image.height == Int(crop.height))
+    #expect(image.width > image.height)
 }

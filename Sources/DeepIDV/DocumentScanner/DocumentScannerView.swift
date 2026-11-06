@@ -120,7 +120,7 @@ struct DocumentCaptureFlowView<Output>: View {
                     onManualCapture: { model.triggerManualCapture() },
                     onCancel: { model.cancel() },
                     onOpenSettings: openSettings,
-                    onGuideChange: { model.guideChanged(widthShare: $0, screenAspect: $1) })
+                    onGuideChange: { model.guideChanged($0) })
             }
             .background(theme.colors.grey.s900)
             .task { await model.run() }

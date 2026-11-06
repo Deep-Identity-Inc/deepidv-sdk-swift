@@ -62,6 +62,8 @@ final class DocumentClassifierScanner: DocumentClassifying {
     /// The latest confirmed type the sticky document still agrees with.
     private var confirmed: ClassifierScanPolicy.Confirmed?
     private var ring: [BufferedFrame<FileInput>] = []
+    /// The capture frame on screen, which kept frames are cut to.
+    private var window: CaptureWindow?
     private var keeping: [Int: Task<Void, Never>] = [:]
     private var keepCount = 0
     private var lastKeptAt: TimeInterval?
@@ -175,6 +177,10 @@ final class DocumentClassifierScanner: DocumentClassifying {
     var shownDocument: ShownDocument? {
         guard isActive, let chip = lastStep?.chip else { return nil }
         return ShownDocument(id: chip.doc.id, confirmed: !chip.pending)
+    }
+
+    func windowChanged(_ window: CaptureWindow) {
+        self.window = window
     }
 
     func stop() {
@@ -328,11 +334,12 @@ final class DocumentClassifierScanner: DocumentClassifying {
         lastKeptAt = now
         if let pixelBuffer = frame.pixelBuffer { frameWidth = CVPixelBufferGetWidth(pixelBuffer) }
         let imaging = self.imaging
+        let window = self.window
         let sharpness = quality.sharpness
         keepCount += 1
         let id = keepCount
         keeping[id] = Task { [weak self] in
-            let kept = await Task.detached { imaging.keptFrame(frame) }.value
+            let kept = await Task.detached { imaging.keptFrame(frame, window: window) }.value
             guard let self else { return }
             self.keeping[id] = nil
             guard let kept, !self.stopped else { return }

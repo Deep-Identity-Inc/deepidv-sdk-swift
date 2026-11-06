@@ -48,12 +48,15 @@ protocol DocumentClassifying: AnyObject {
         -> FrontCaptureReport
     /// The capture ended without a photo; stop any work in flight.
     func stop()
+    /// Where the capture frame is drawn on screen; kept frames are cut to it.
+    func windowChanged(_ window: CaptureWindow)
     /// The document the classifier names for the screen, or `nil`.
     var shownDocument: ShownDocument? { get }
 }
 
 extension DocumentClassifying {
     var shownDocument: ShownDocument? { nil }
+    func windowChanged(_ window: CaptureWindow) {}
 }
 
 /// The document the capture screen names while scanning.

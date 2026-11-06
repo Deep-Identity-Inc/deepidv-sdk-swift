@@ -119,9 +119,8 @@ final class DocumentCaptureModel<Output>: ObservableObject {
     /// When the manual shutter is due to show.
     private var shutterDeadline: Date?
     private var stagePresenter = CaptureStagePresenter()
-    /// The on-screen frame: its width as a share of the screen's, and the
-    /// screen's width ÷ height. `nil` until the screen reports it.
-    private var guide: (widthShare: Double, screenAspect: Double)?
+    /// The capture frame drawn on screen. `nil` until the screen reports it.
+    private var guide: CaptureWindow?
 
     /// Capture diagnostics. Filter the Xcode console / Console.app by this
     /// subsystem (`com.deepidv.sdk`) to see why auto-capture is or isn't locking.
@@ -180,9 +179,10 @@ final class DocumentCaptureModel<Output>: ObservableObject {
     /// Where the frame is drawn, so "close enough" means filling it. The
     /// preview fills the screen, cropping the camera's view to the screen's
     /// shape, so the frame's share of the camera frame follows from both.
-    func guideChanged(widthShare: Double, screenAspect: Double) {
-        guard widthShare > 0, screenAspect > 0 else { return }
-        guide = (widthShare, screenAspect)
+    /// The photo uploaded is cut to the same frame.
+    func guideChanged(_ window: CaptureWindow) {
+        guard window.rect.width > 0, window.screenAspect > 0 else { return }
+        guide = window
     }
 
     func triggerManualCapture() {
@@ -291,7 +291,7 @@ final class DocumentCaptureModel<Output>: ObservableObject {
 
             var input: FileInput
             do {
-                input = try encoder.encode(captured, documentType: documentType)
+                input = try encoder.encode(captured, documentType: documentType, window: guide)
             } catch {
                 finishCaptureFailed(error, fallback: "Unable to process the captured image.")
                 return
@@ -372,7 +372,7 @@ final class DocumentCaptureModel<Output>: ObservableObject {
             let height = Double(CVPixelBufferGetHeight(buffer))
             let aspect = height > 0 ? Double(CVPixelBufferGetWidth(buffer)) / height : 0
             analyzer.guideFill = DocumentCaptureAnalyzer.guideFill(
-                widthShare: guide.widthShare, screenAspect: guide.screenAspect,
+                widthShare: Double(guide.rect.width), screenAspect: guide.screenAspect,
                 frameAspect: aspect, share: tunables.guideFillShare)
         }
         let quality = evaluator.quality(of: frame, for: documentType)
@@ -390,6 +390,7 @@ final class DocumentCaptureModel<Output>: ObservableObject {
         // photo; without them, the blur gate stands as before.
         let decision = analyzer.evaluate(quality, checksSharpness: !usesClassifierRules)
         if let classifier {
+            if let guide { classifier.windowChanged(guide) }
             classifier.observe(
                 frame, quality: quality, framed: analyzer.isFramed(quality),
                 visionReady: decision == .capture, at: now)

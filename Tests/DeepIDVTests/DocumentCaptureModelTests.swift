@@ -32,7 +32,7 @@ private func stubResult() -> DocumentScanResult {
 /// Returns canned JPEG-magic bytes, or throws a scripted error.
 private struct StubStillEncoder: DocumentStillEncoding {
     var error: DeepIDVError?
-    func encode(_ frame: CameraFrame, documentType: DocumentType) throws -> FileInput {
+    func encode(_ frame: CameraFrame, documentType: DocumentType, window: CaptureWindow?) throws -> FileInput {
         if let error { throw error }
         return .data(Data([0xFF, 0xD8, 0xFF, 0xE0]))
     }

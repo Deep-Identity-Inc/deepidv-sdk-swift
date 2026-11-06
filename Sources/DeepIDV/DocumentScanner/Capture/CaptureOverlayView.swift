@@ -36,9 +36,8 @@ struct CaptureOverlayView: View {
     var onManualCapture: () -> Void = {}
     var onCancel: () -> Void = {}
     var onOpenSettings: () -> Void = {}
-    /// Reports where the window is drawn: its width as a share of the screen's,
-    /// and the screen's width ÷ height.
-    var onGuideChange: (_ widthShare: Double, _ screenAspect: Double) -> Void = { _, _ in }
+    /// Reports where the window is drawn on the screen.
+    var onGuideChange: (CaptureWindow) -> Void = { _ in }
 
     @State private var showsHelp = false
 
@@ -132,7 +131,12 @@ struct CaptureOverlayView: View {
     private func reportGuide(in size: CGSize) {
         guard size.width > 0, size.height > 0 else { return }
         let window = CaptureLayout.window(in: size, aspect: guideAspect)
-        onGuideChange(Double(window.width / size.width), Double(size.width / size.height))
+        onGuideChange(
+            CaptureWindow(
+                rect: CGRect(
+                    x: window.minX / size.width, y: window.minY / size.height,
+                    width: window.width / size.width, height: window.height / size.height),
+                screenAspect: Double(size.width / size.height)))
     }
 
     /// The title and subtitle, cross-fading when the stage changes.

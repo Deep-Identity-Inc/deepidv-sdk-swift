@@ -43,7 +43,7 @@ private final class FakeClassifier: DocumentClassifying {
 }
 
 private struct StillEncoder: DocumentStillEncoding {
-    func encode(_ frame: CameraFrame, documentType: DocumentType) throws -> FileInput {
+    func encode(_ frame: CameraFrame, documentType: DocumentType, window: CaptureWindow?) throws -> FileInput {
         .data(Data([0xFF, 0xD8, 0xFF, UInt8(frame.index % 256)]))
     }
 }

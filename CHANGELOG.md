@@ -79,10 +79,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so it no longer slows down capturing a card held the right way up.
 - The document-type picker is skipped when the workflow allows only one
   document type, and is redesigned as a list of tappable rows.
-- An uploaded ID photo (front and back) is cropped to the document and
-  straightened, with a small margin, instead of sending the whole camera
-  frame. Nothing around the card, such as the person holding it, is sent.
-  When no document is found the whole frame is sent as before.
+- An uploaded ID photo (front and back) is cut to the capture frame drawn on
+  screen, with a small margin, instead of sending the whole camera view.
+  Nothing outside the frame, such as the person holding the card, is sent.
+  The cut keeps the camera's own pixels: nothing is enlarged or turned.
 
 ## [1.2.1] - 2026-10-13
 

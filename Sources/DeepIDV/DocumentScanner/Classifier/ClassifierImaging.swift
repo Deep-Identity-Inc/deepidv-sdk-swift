@@ -23,8 +23,10 @@ protocol ClassifierImaging: Sendable {
     func prepare(_ frame: CameraFrame, box: CGRect?) -> PreparedFrame?
     /// The prepared frame turned by `rotation` degrees (0 or 180), as base64 JPEG.
     func detectImage(_ frame: PreparedFrame, rotation: Int) -> String?
-    /// A frame kept as a candidate photo: perspective-corrected, at most 2000 px.
-    func keptFrame(_ frame: CameraFrame) -> FileInput?
+    /// A frame kept as a candidate photo or extra frame, at most 2000 px: cut to
+    /// the capture frame on screen, like the photo, or perspective-corrected to
+    /// the card when the frame isn't known.
+    func keptFrame(_ frame: CameraFrame, window: CaptureWindow?) -> FileInput?
     /// The photo's sharpness on the same scale as the video frames, which are
     /// `frameWidth` pixels wide. `nil` when it can't be measured.
     func sharpness(of photo: FileInput, frameWidth: Int) -> Double?
@@ -100,8 +102,14 @@ struct CoreImageClassifierImaging: ClassifierImaging {
         return jpeg(image, quality: ClassifierImages.detectQuality)?.base64EncodedString()
     }
 
-    func keptFrame(_ frame: CameraFrame) -> FileInput? {
+    func keptFrame(_ frame: CameraFrame, window: CaptureWindow?) -> FileInput? {
         guard let pixelBuffer = frame.pixelBuffer else { return nil }
+        let image = CIImage(cvPixelBuffer: pixelBuffer)
+        if let window, let crop = DocumentStillEncoder.cropRect(for: window, in: image.extent) {
+            return try? DocumentImageProcessor.process(
+                image.cropped(to: crop), maxDimension: ClassifierImages.keptSide,
+                jpegQuality: CaptureFramePicker.extraJPEGQuality)
+        }
         let quad = VisionDocumentFrameEvaluator.detectQuad(in: pixelBuffer)
         return try? DocumentImageProcessor.process(
             pixelBuffer, correctingTo: quad, maxDimension: ClassifierImages.keptSide,
