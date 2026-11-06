@@ -33,7 +33,9 @@ struct ReVerifyFlowView: View {
     private var content: some View {
         switch model.phase {
         case .checking:
-            progressView(L("Getting ready"), symbol: "faceid", message: L("Next, a quick check that it's really you"))
+            progressView(
+                L("Getting ready"), symbol: "faceid",
+                message: L("Next, a quick check that it's really you"), onClose: model.cancel)
         case .liveness(let session, let attemptsRemaining, let guidance):
             livenessView(session, attemptsRemaining: attemptsRemaining, guidance: guidance)
         case .uploading:
@@ -59,11 +61,13 @@ struct ReVerifyFlowView: View {
         let livenessSessionID = session.livenessSessionID
         return CaptureRunView(
             script: session.script,
+            onCancel: model.cancel,
             onCaptured: { model.captured($0, livenessSessionID: livenessSessionID) },
             onError: { model.captureFailed($0, livenessSessionID: livenessSessionID) }
         )
         .id(livenessSessionID)
-        .overlay(alignment: .top) {
+        // At the bottom, clear of the close button and the instruction.
+        .overlay(alignment: .bottom) {
             attemptBanner(attemptsRemaining: attemptsRemaining, guidance: guidance)
         }
     }
@@ -122,8 +126,11 @@ struct ReVerifyFlowView: View {
 
     // MARK: - Status screens
 
-    private func progressView(_ title: String, symbol: String, message: String) -> some View {
-        Kit.StatusScreen(badge: .working(symbol: symbol), title: title, message: message)
+    private func progressView(
+        _ title: String, symbol: String, message: String, onClose: (() -> Void)? = nil
+    ) -> some View {
+        Kit.StatusScreen(
+            badge: .working(symbol: symbol), title: title, message: message, onClose: onClose)
     }
 
     /// Text comes only from ``ReVerifyCopy`` — never `error.message`. Scrolls

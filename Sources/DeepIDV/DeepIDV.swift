@@ -252,7 +252,9 @@ public struct DeepIDVClient: Sendable {
     ///     case-insensitively, and leading or trailing whitespace is ignored. A
     ///     blank email ends the flow immediately with `.failure`
     ///     (``DeepIDVError/Kind/validation``).
-    ///   - onResult: Called exactly once, with the outcome or the error.
+    ///   - onResult: Called exactly once, with the outcome or the error. The
+    ///     view's close button ends it with `.failure`
+    ///     (``DeepIDVError/Kind/cancelled``).
     @MainActor
     public func makeReVerifyView(
         workflowID: String,

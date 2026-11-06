@@ -64,6 +64,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (it was `DECLINED`). Both are new `SessionStatus` constants.
 - On-screen text uses US spelling ("license", "color"), except a document's
   official name ("UK Driving Licence").
+- The re-verification view has a close button, during the face check and
+  while it gets ready, which ends it with `.cancelled`. Hosts no longer
+  need to add their own.
 - The anti-cheat check's error screen shows our own wording instead of the
   server's message.
 - **Behavior:** `DeepIDVConfig.documentCamera` now defaults to `.front`, for
