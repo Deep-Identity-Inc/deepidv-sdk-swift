@@ -19,16 +19,22 @@ public struct DeepIDVWorkflowView: View {
     private let client: DeepIDVClient
     private let source: Source
     private let onResult: (Result<WorkflowRunResult, DeepIDVError>) -> Void
+    private let documentCamera: DocumentCamera?
 
     /// Creates a session for `workflowID` and runs it.
+    /// - Parameter documentCamera: the camera for the document photos, over
+    ///   ``DeepIDVConfig/documentCamera``; `nil` (the default) keeps the
+    ///   config's. Selfies and the liveness check always use the front camera.
     public init(
         client: DeepIDVClient,
         workflowID: String,
         user: WorkflowUser,
+        documentCamera: DocumentCamera? = nil,
         onResult: @escaping (Result<WorkflowRunResult, DeepIDVError>) -> Void
     ) {
         self.client = client
         self.source = .workflow(id: workflowID, user: user)
+        self.documentCamera = documentCamera
         self.onResult = onResult
     }
 
@@ -37,13 +43,18 @@ public struct DeepIDVWorkflowView: View {
     /// end-user identity fields were supplied at creation, so none are needed
     /// here. A session that has already started, or is terminal, fails with
     /// ``DeepIDVError/Kind/conflict``.
+    /// - Parameter documentCamera: the camera for the document photos, over
+    ///   ``DeepIDVConfig/documentCamera``; `nil` (the default) keeps the
+    ///   config's. Selfies and the liveness check always use the front camera.
     public init(
         client: DeepIDVClient,
         sessionID: String,
+        documentCamera: DocumentCamera? = nil,
         onResult: @escaping (Result<WorkflowRunResult, DeepIDVError>) -> Void
     ) {
         self.client = client
         self.source = .session(id: sessionID)
+        self.documentCamera = documentCamera
         self.onResult = onResult
     }
 
@@ -53,17 +64,26 @@ public struct DeepIDVWorkflowView: View {
     /// never been submitted to, this continues a session that was already started.
     /// A terminal session shows the entry error screen and reports
     /// ``DeepIDVError/Kind/conflict`` through `onResult` when dismissed.
+    /// - Parameter documentCamera: the camera for the document photos, over
+    ///   ``DeepIDVConfig/documentCamera``; `nil` (the default) keeps the
+    ///   config's. Selfies and the liveness check always use the front camera.
     public init(
         client: DeepIDVClient,
         resumingSessionID sessionID: String,
+        documentCamera: DocumentCamera? = nil,
         onResult: @escaping (Result<WorkflowRunResult, DeepIDVError>) -> Void
     ) {
         self.client = client
         self.source = .resume(id: sessionID)
+        self.documentCamera = documentCamera
         self.onResult = onResult
     }
 
     public var body: some View {
+        flow.environment(\.documentCameraOverride, documentCamera)
+    }
+
+    @ViewBuilder private var flow: some View {
         switch source {
         case .workflow(let id, let user):
             WorkflowFlowView(
@@ -164,7 +184,10 @@ struct WorkflowFlowView: View {
         content
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(theme.colors.grey.s50)
-            .task { model.start() }
+            .task {
+                model.showsCompletion = client.config.showsCompletionScreen
+                model.start()
+            }
             .onDisappear { model.cancel() }
     }
 
@@ -172,17 +195,19 @@ struct WorkflowFlowView: View {
     private var content: some View {
         switch model.phase {
         case .creating:
-            progressView("Preparing your verification…")
+            progressView(L("Preparing your verification"), symbol: "lock.shield.fill")
         case .runningStep(let index):
             stepView(index: index)
         case .resyncing:
-            progressView("Refreshing your verification…")
+            progressView(L("Picking up where you left off"), symbol: "arrow.triangle.2.circlepath")
         case .finishing:
-            progressView("Finishing your verification…")
+            progressView(L("Finishing up"), symbol: "checkmark.shield.fill")
         case .failed(let error):
             entryErrorView(error)
         case .stepError(let error):
             stepErrorView(error)
+        case .complete:
+            CompletionScreen(onDone: { model.completionDismissed() })
         case .finished:
             Color.clear
         }
@@ -226,17 +251,13 @@ struct WorkflowFlowView: View {
         }
     }
 
-    private func progressView(_ title: String) -> some View {
-        VStack(spacing: theme.spacing.lg) {
-            Spacer()
-            ProgressView()
-            Text(title)
-                .font(theme.typography.body())
-                .foregroundStyle(theme.colors.grey.s700)
-            Spacer()
-            cancelButton
+    private func progressView(_ title: String, symbol: String) -> some View {
+        Kit.StatusScreen(
+            badge: .working(symbol: symbol), title: title,
+            message: L("This only takes a moment"), onClose: model.cancel
+        ) {
+            Kit.SecureNote().padding(.top, theme.spacing.sm)
         }
-        .padding(theme.spacing.lg)
     }
 
     private func entryErrorView(_ error: DeepIDVError) -> some View {
@@ -244,7 +265,7 @@ struct WorkflowFlowView: View {
         // retrying can only fail the same way, so close is the only exit.
         let retry: (() -> Void)? = model.canRetryEntry ? { model.retryEntry() } : nil
         return WorkflowErrorView(
-            title: "We couldn't start verification",
+            title: L("We couldn't start verification"),
             message: WorkflowFailureCopy.error(error).body,
             onRetry: retry,
             onClose: { model.dismissFailure() })
@@ -261,12 +282,6 @@ struct WorkflowFlowView: View {
             onClose: { model.dismissStepError() })
     }
 
-    private var cancelButton: some View {
-        Button("Cancel", action: model.cancel)
-            .font(theme.typography.button(size: 16))
-            .foregroundStyle(theme.colors.grey.s600)
-            .padding(theme.spacing.sm)
-    }
 }
 
 /// The error screen for a run that could not start or could not continue.
@@ -280,43 +295,15 @@ private struct WorkflowErrorView: View {
     let onClose: () -> Void
 
     var body: some View {
-        VStack(spacing: theme.spacing.lg) {
-            Spacer()
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 56))
-                .foregroundStyle(theme.colors.warning)
-            Text(title)
-                .font(theme.typography.heading())
-                .foregroundStyle(theme.colors.grey.s900)
-                .multilineTextAlignment(.center)
-            Text(message)
-                .font(theme.typography.body())
-                .foregroundStyle(theme.colors.grey.s700)
-                .multilineTextAlignment(.center)
-            Spacer()
-            if let onRetry {
-                primaryButton("Try again", action: onRetry)
-                Button("Close", action: onClose)
-                    .font(theme.typography.button(size: 16))
-                    .foregroundStyle(theme.colors.grey.s600)
-                    .padding(theme.spacing.sm)
-            } else {
-                primaryButton("Close", action: onClose)
-            }
-        }
-        .padding(theme.spacing.lg)
-    }
-
-    private func primaryButton(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(theme.typography.button(size: 16))
-                .foregroundStyle(theme.colors.grey.s50)
-                .padding(theme.spacing.md)
-                .frame(maxWidth: .infinity)
-                .background(theme.colors.primary)
-                .clipShape(
-                    RoundedRectangle(cornerRadius: theme.spacing.sm, style: .continuous))
+        if let onRetry {
+            Kit.StatusScreen(
+                badge: .warning, title: title, message: message,
+                primary: .init(title: L("Try again"), run: onRetry),
+                secondary: .init(title: L("Close"), run: onClose))
+        } else {
+            Kit.StatusScreen(
+                badge: .warning, title: title, message: message,
+                primary: .init(title: L("Close"), run: onClose))
         }
     }
 }

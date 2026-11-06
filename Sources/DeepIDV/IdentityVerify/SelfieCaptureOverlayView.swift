@@ -1,138 +1,95 @@
 // DeepIDV › IdentityVerify
 
 import SwiftUI
+import UIKit
 
-/// The selfie camera overlay: the oval face guide, the live framing hint,
-/// the manual shutter, a cancel affordance, and the permission-denied CTA.
+/// The selfie camera overlay: the frosted surround with an oval window, the
+/// instruction above it, a color that follows the framing, the photo frozen
+/// with a tick once taken, the manual shutter and the close button. Camera
+/// access off gets its own screen.
 ///
-/// The selfie sibling of ``CaptureOverlayView`` — camera-free (plain values +
-/// callbacks) so it renders in previews and tests. All styling
-/// resolves from `@Environment(\.theme)`; opacities derive from grey tokens, not
-/// raw literals. Kept separate from the document overlay because
-/// the guide shape (oval vs. rectangle) and the hints differ.
+/// The selfie sibling of ``CaptureOverlayView``, drawn with
+/// ``FaceCaptureOverlay``. Camera-free (plain values and callbacks), so it
+/// renders in previews and tests.
 struct SelfieCaptureOverlayView: View {
-    @Environment(\.theme) private var theme
-
+    /// The subtitle while waiting for a face.
     let instruction: String
     let guidance: SelfieGuidance?
     let manualShutterVisible: Bool
     let permissionDenied: Bool
+    /// The photo just taken.
+    var capturedImage: UIImage? = nil
     var onManualCapture: () -> Void = {}
     var onCancel: () -> Void = {}
     var onOpenSettings: () -> Void = {}
 
     var body: some View {
-        VStack(spacing: theme.spacing.lg) {
-            topBar
-            Spacer()
-            if permissionDenied {
-                permissionCTA
-            } else {
-                ovalGuide
-            }
-            Spacer()
-            if !permissionDenied { bottomBar }
-        }
-        .padding(theme.spacing.lg)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // MARK: - Sections
-
-    private var topBar: some View {
-        HStack {
-            Button(action: onCancel) {
-                Text("Cancel")
-                    .font(theme.typography.button())
-                    .foregroundStyle(theme.colors.grey.s50)
-            }
-            Spacer()
-            Text(instruction)
-                .font(theme.typography.body())
-                .foregroundStyle(theme.colors.grey.s50)
-                .multilineTextAlignment(.center)
-            Spacer()
-            // Balances the leading Cancel button so the instruction stays centered.
-            Text("Cancel")
-                .font(theme.typography.button())
-                .foregroundStyle(.clear)
-        }
-    }
-
-    private var ovalGuide: some View {
-        VStack(spacing: theme.spacing.md) {
-            Ellipse()
-                .strokeBorder(theme.colors.primary, lineWidth: 3)
-                .aspectRatio(0.78, contentMode: .fit)  // a head-shaped oval
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, theme.spacing.xl)
-
-            if let guidance {
-                Text(Self.hintText(for: guidance))
-                    .font(theme.typography.body())
-                    .foregroundStyle(theme.colors.grey.s50)
-                    .padding(.horizontal, theme.spacing.md)
-                    .padding(.vertical, theme.spacing.sm)
-                    .background(theme.colors.grey.s900.opacity(0.6))
-                    .clipShape(Capsule())
-            }
-        }
-    }
-
-    private var permissionCTA: some View {
-        VStack(spacing: theme.spacing.md) {
-            Text("Camera access is off")
-                .font(theme.typography.heading(size: 18))
-                .foregroundStyle(theme.colors.grey.s50)
-            Text("Enable camera access in Settings to take a selfie.")
-                .font(theme.typography.body())
-                .foregroundStyle(theme.colors.grey.s300)
-                .multilineTextAlignment(.center)
-            Button(action: onOpenSettings) {
-                Text("Open Settings")
-                    .font(theme.typography.button(size: 16))
-                    .foregroundStyle(theme.colors.grey.s50)
-                    .padding(.horizontal, theme.spacing.lg)
-                    .padding(.vertical, theme.spacing.sm)
-                    .background(theme.colors.primary)
-                    .clipShape(RoundedRectangle(cornerRadius: theme.spacing.sm))
-            }
-        }
-        .padding(theme.spacing.lg)
-    }
-
-    private var bottomBar: some View {
-        ZStack {
-            if manualShutterVisible {
-                Button(action: onManualCapture) {
-                    Circle()
-                        .fill(theme.colors.grey.s50)
-                        .frame(width: 64, height: 64)
-                        .overlay(Circle().strokeBorder(theme.colors.primary, lineWidth: 4))
+        if permissionDenied {
+            CaptureScreens.Permission(purpose: L("take a selfie"), onOpenSettings: onOpenSettings)
+                .overlay(alignment: .topLeading) {
+                    CaptureLayout.RoundButton(symbol: "xmark", label: L("Cancel"), action: onCancel)
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 16)
                 }
-                .accessibilityLabel("Capture")
-            }
+        } else {
+            let copy = Self.copy(
+                guidance: guidance, captured: capturedImage != nil, instruction: instruction)
+            FaceCaptureOverlay(
+                title: copy.title, subtitle: copy.subtitle,
+                tone: Self.tone(guidance: guidance, captured: capturedImage != nil),
+                capturedImage: capturedImage,
+                manualShutterVisible: manualShutterVisible && capturedImage == nil,
+                onManualCapture: onManualCapture,
+                onCancel: onCancel)
+                .onChange(of: guidance) { announce($0) }
         }
-        .frame(height: 72)
     }
 
-    // MARK: - Hint mapping
+    /// The title and subtitle for the framing.
+    static func copy(
+        guidance: SelfieGuidance?, captured: Bool, instruction: String
+    ) -> CaptureCopy {
+        if captured { return .init(title: L("Got it!"), subtitle: L("Your selfie was taken")) }
+        switch guidance {
+        case nil, .noFace?:
+            return .init(title: L("Position your face in the oval"), subtitle: instruction)
+        case .multipleFaces?:
+            return .init(title: L("Only your face, please"), subtitle: L("Make sure no one else is in view"))
+        case .moveCloser?:
+            return .init(title: L("Move a little closer"), subtitle: L("Your face should fill the oval"))
+        case .centerFace?:
+            return .init(title: L("Center your face in the oval"), subtitle: L("Look straight at the screen"))
+        case .holdSteady?:
+            return .init(title: L("Hold still…"), subtitle: L("Taking the photo"))
+        }
+    }
+
+    /// The oval's color: white while looking, blue while lining up, amber for
+    /// someone else in view, green when the photo is about to be taken.
+    static func tone(guidance: SelfieGuidance?, captured: Bool) -> CaptureLayout.Tone {
+        if captured { return .success }
+        switch guidance {
+        case nil, .noFace?: return .idle
+        case .moveCloser?, .centerFace?: return .active
+        case .multipleFaces?: return .warning
+        case .holdSteady?: return .success
+        }
+    }
+
+    private func announce(_ guidance: SelfieGuidance?) {
+        guard let guidance else { return }
+        UIAccessibility.post(notification: .announcement, argument: Self.hintText(for: guidance))
+    }
 
     /// Maps a ``SelfieGuidance`` to its user-facing instruction.
     static func hintText(for guidance: SelfieGuidance) -> String {
-        switch guidance {
-        case .noFace: return "Look at the camera"
-        case .multipleFaces: return "Only your face should be visible"
-        case .moveCloser: return "Move closer"
-        case .centerFace: return "Center your face in the circle"
-        case .holdSteady: return "Hold steady"
-        }
+        copy(guidance: guidance, captured: false, instruction: "").title
     }
 }
 
 #Preview {
     SelfieCaptureOverlayView(
-        instruction: "Center your face in the circle",
+        instruction: L("The photo will be taken automatically"),
         guidance: .moveCloser,
         manualShutterVisible: true,
         permissionDenied: false

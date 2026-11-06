@@ -55,6 +55,12 @@ struct ColorTokens: Sendable, Equatable {
     var warning: Color
     var error: Color
     var grey: GreyScale
+    /// Text and icons on `primary`, such as button labels.
+    var onPrimary: Color = .white
+    /// Ticks and icons on `success`.
+    var onSuccess: Color = .white
+    /// Icons on `warning`.
+    var onWarning: Color = .white
 
     /// Neutral ramp, light (`s50`) to dark (`s900`).
     struct GreyScale: Sendable, Equatable {

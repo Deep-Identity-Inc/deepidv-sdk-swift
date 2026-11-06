@@ -87,6 +87,49 @@ private func passingQuality(at center: CGPoint) -> CaptureQuality {
     #expect(analyzer.assess(passingQuality(for: .passport)) == nil)
 }
 
+@Test func aCardHeldSidewaysIsAskedToTurnBeforeMovingCloser() {
+    // Sideways, a card spans less of the frame's width, so it also reads as far away.
+    for type in [DocumentType.idCard, .driversLicense] {
+        let analyzer = DocumentCaptureAnalyzer(documentType: type)
+        var sideways = passingQuality(for: type)
+        sideways.isPortrait = true
+        sideways.fillRatio = 0.23
+        #expect(analyzer.assess(sideways) == .turnToLandscape)
+        #expect(!analyzer.isFramed(sideways))
+    }
+}
+
+@Test func aCardInFramesTurnedFromTheScreenIsNeverAskedToTurn() {
+    // A landscape iPad whose camera still delivers portrait frames: a card
+    // held the right way looks tall in the frame.
+    var analyzer = DocumentCaptureAnalyzer(documentType: .driversLicense)
+    analyzer.framesTurnedFromScreen = true
+    var card = passingQuality(for: .driversLicense)
+    card.isPortrait = true
+    #expect(analyzer.assess(card) == nil)
+    #expect(analyzer.isFramed(card))
+}
+
+@Test func anUprightPassportBookletIsNeverAskedToTurn() {
+    let analyzer = DocumentCaptureAnalyzer(documentType: .passport)
+    var booklet = passingQuality(for: .passport)
+    booklet.isPortrait = true
+    #expect(analyzer.assess(booklet) == nil)
+    #expect(analyzer.isFramed(booklet))
+}
+
+@Test func anOpenPassportBookletIsFramedButNotForACard() {
+    // What Vision measured around an open booklet on an iPad front camera.
+    let passport = DocumentCaptureAnalyzer(documentType: .passport)
+    let card = DocumentCaptureAnalyzer(documentType: .driversLicense)
+    for aspect in [1.11, 1.19, 1.24] {
+        var booklet = passingQuality(for: .passport)
+        booklet.aspectRatio = aspect
+        #expect(passport.assess(booklet) == nil, "aspect \(aspect)")
+        #expect(card.assess(booklet) == .fitDocumentInFrame, "aspect \(aspect)")
+    }
+}
+
 @Test func autoTypeAcceptsBothPassportAndCardShapes() {
     let analyzer = DocumentCaptureAnalyzer(documentType: .auto)
     var passportShaped = passingQuality()

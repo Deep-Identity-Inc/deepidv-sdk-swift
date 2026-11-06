@@ -10,20 +10,23 @@ import SwiftUI
 /// drop-in: inject a different `Theme` and this view re-styles, untouched.
 struct PlaceholderStepView: View {
     @Environment(\.theme) private var theme
+    @Environment(\.colorScheme) private var scheme
     let title: String
     let subtitle: String
 
     var body: some View {
+        let palette = Kit.Palette(theme, scheme)
         VStack(spacing: theme.spacing.sm) {
             Text(title)
-                .font(theme.typography.heading())
-                .foregroundStyle(theme.colors.grey.s900)
+                .font(theme.typography.heading(size: 28).weight(.semibold))
+                .foregroundStyle(palette.text)
             Text(subtitle)
-                .font(theme.typography.body())
-                .foregroundStyle(theme.colors.grey.s600)
+                .font(theme.typography.body(size: 17))
+                .foregroundStyle(palette.secondaryText)
         }
+        .multilineTextAlignment(.center)
         .padding(theme.spacing.lg)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(theme.colors.grey.s50)
+        .background(palette.background.ignoresSafeArea())
     }
 }

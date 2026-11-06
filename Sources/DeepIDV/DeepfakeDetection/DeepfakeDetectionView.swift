@@ -24,6 +24,6 @@ struct DeepfakeDetectionView: View {
     }
 
     var body: some View {
-        PlaceholderStepView(title: "Deepfake Detection", subtitle: "Coming soon")
+        PlaceholderStepView(title: L("Deepfake Detection"), subtitle: L("Coming soon"))
     }
 }

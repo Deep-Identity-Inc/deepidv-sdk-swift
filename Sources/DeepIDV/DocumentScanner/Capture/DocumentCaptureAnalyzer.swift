@@ -25,6 +25,36 @@ struct DocumentCaptureAnalyzer: Sendable {
     /// The gating thresholds.
     let tunables: DocumentCaptureTunables
 
+    /// The fill the on-screen frame asks for, as a share of the camera frame's
+    /// width, when it is less than `tunables.minFillRatio`: a card that fills the
+    /// drawn frame is close enough, however large the frame is drawn.
+    var guideFill: Double?
+
+    /// Whether the camera frames are turned from the screen: landscape frames
+    /// under a portrait screen, or the reverse. The camera's turn is set when it
+    /// starts, so this happens when the device is turned mid-scan, or held in
+    /// landscape on iOS 15 and 16, whose frames are always portrait. A card's
+    /// shape in such a frame says nothing about how it is held on screen, so
+    /// it is never asked to be turned.
+    var framesTurnedFromScreen = false
+
+    /// The fill a frame needs to count as close enough.
+    var minFill: Double {
+        guard let guideFill, guideFill > 0 else { return tunables.minFillRatio }
+        return min(tunables.minFillRatio, guideFill)
+    }
+
+    /// The fill that covers `share` of a frame drawn `widthShare` of the screen
+    /// wide, as a share of a camera frame `frameAspect` (width ÷ height) wide,
+    /// under a preview that fills a screen `screenAspect` wide.
+    static func guideFill(
+        widthShare: Double, screenAspect: Double, frameAspect: Double, share: Double
+    ) -> Double {
+        // Aspect-fill crops the camera frame's width when the screen is narrower.
+        let visible = frameAspect > 0 ? min(1, screenAspect / frameAspect) : 1
+        return widthShare * visible * share
+    }
+
     /// Consecutive fully-passing frames seen so far. Exposed read-only for tests
     /// and overlay debugging; reset to zero whenever a gate fails.
     private(set) var consecutiveGoodFrames = 0
@@ -51,7 +81,9 @@ struct DocumentCaptureAnalyzer: Sendable {
     /// about 50 against the 150 bar), and the photo is the sharpest frame kept.
     func assess(_ quality: CaptureQuality, checksSharpness: Bool = true) -> CaptureGuidance? {
         guard quality.documentDetected else { return .searching }
-        if quality.fillRatio < tunables.minFillRatio { return .moveCloser }
+        // Before distance: a sideways card is narrow, so it reads as too far away.
+        if isSideways(quality) { return .turnToLandscape }
+        if quality.fillRatio < minFill { return .moveCloser }
         if !aspectMatches(quality.aspectRatio) { return .fitDocumentInFrame }
         if quality.glareRatio > tunables.maxGlareRatio { return .reduceGlare }
         if checksSharpness, quality.sharpness < tunables.minSharpness { return .holdSteady }
@@ -62,7 +94,8 @@ struct DocumentCaptureAnalyzer: Sendable {
     /// free of glare. Sharpness and steadiness are left out: the classifier reads a
     /// card that is a little soft or still moving, and the capture hold checks both.
     func isFramed(_ quality: CaptureQuality) -> Bool {
-        quality.documentDetected && quality.fillRatio >= tunables.minFillRatio
+        quality.documentDetected && !isSideways(quality)
+            && quality.fillRatio >= minFill
             && aspectMatches(quality.aspectRatio) && quality.glareRatio <= tunables.maxGlareRatio
     }
 
@@ -101,6 +134,12 @@ struct DocumentCaptureAnalyzer: Sendable {
         return .guide(.holdSteady)
     }
 
+    /// A card held with its long side up and down. Not for a passport: the open
+    /// booklet is often taller than it is wide, and only its page is read.
+    private func isSideways(_ quality: CaptureQuality) -> Bool {
+        quality.isPortrait && documentType != .passport && !framesTurnedFromScreen
+    }
+
     /// Euclidean distance between two normalized points.
     private static func distance(_ a: CGPoint, _ b: CGPoint) -> Double {
         let dx = Double(a.x - b.x)
@@ -117,6 +156,10 @@ struct DocumentCaptureAnalyzer: Sendable {
 
     // MARK: - Aspect-ratio band
 
+    /// The shape Vision measures for an open passport booklet held up to the
+    /// camera, around the photo page.
+    static let openBooklet = 1.15
+
     /// Whether `ratio` (longer ÷ shorter side, ≥ 1) is within tolerance of the
     /// target shape for the selected document type.
     private func aspectMatches(_ ratio: Double) -> Bool {
@@ -129,11 +172,13 @@ struct DocumentCaptureAnalyzer: Sendable {
     /// to a capture flow, so in practice this is passport-or-card.
     /// - ID-1 (card / driver's licence / most national IDs): 85.6 × 53.98 mm ≈ 1.586
     /// - ID-3 (passport data page): 125 × 88 mm ≈ 1.42
+    /// - An open passport booklet, which is what Vision usually finds around the
+    ///   photo page: about 1.1–1.25 on a device front camera (``openBooklet``).
     static func aspectTargets(for type: DocumentType) -> [Double] {
         switch type {
-        case .passport: return [1.42]
+        case .passport: return [openBooklet, 1.42]
         case .idCard, .driversLicense: return [1.586]
-        case .auto: return [1.42, 1.586]
+        case .auto: return [openBooklet, 1.42, 1.586]
         }
     }
 }
@@ -187,8 +232,11 @@ struct VisionDocumentFrameEvaluator: DocumentFrameEvaluating {
 
         let width = CVPixelBufferGetWidth(pixelBuffer)
         let height = CVPixelBufferGetHeight(pixelBuffer)
-        let aspectRatio = Self.aspectRatio(
+        let (horizontal, vertical) = Self.edgeLengths(
             of: observation, pixelWidth: width, pixelHeight: height)
+        let aspectRatio =
+            horizontal > 0 && vertical > 0
+            ? max(horizontal, vertical) / min(horizontal, vertical) : 0
 
         let (sharpness, glareRatio) = Self.sharpnessAndGlare(
             in: pixelBuffer, boundingBox: box)
@@ -200,7 +248,8 @@ struct VisionDocumentFrameEvaluator: DocumentFrameEvaluating {
             sharpness: sharpness,
             glareRatio: glareRatio,
             center: CGPoint(x: box.midX, y: box.midY),
-            boundingBox: box)
+            boundingBox: box,
+            isPortrait: vertical > horizontal * Self.portraitMargin)
     }
 
     /// Runs segmentation, falling back to rectangle detection. Shared by the
@@ -235,12 +284,16 @@ struct VisionDocumentFrameEvaluator: DocumentFrameEvaluating {
             bottomLeft: o.bottomLeft, bottomRight: o.bottomRight)
     }
 
-    /// Long-side ÷ short-side of the observed quad, in pixel space (normalized
-    /// corners scaled by the buffer dimensions so the ratio isn't distorted by a
-    /// non-square frame).
-    private static func aspectRatio(
+    /// How much taller than wide a quad must be to count as held sideways, so a
+    /// squarish or tilted quad doesn't flicker between the two.
+    static let portraitMargin = 1.15
+
+    /// The observed quad's mean horizontal and vertical edge lengths, in pixel
+    /// space (normalized corners scaled by the buffer dimensions so the shape
+    /// isn't distorted by a non-square frame).
+    private static func edgeLengths(
         of observation: VNRectangleObservation, pixelWidth: Int, pixelHeight: Int
-    ) -> Double {
+    ) -> (horizontal: Double, vertical: Double) {
         let w = Double(pixelWidth)
         let h = Double(pixelHeight)
         func point(_ p: CGPoint) -> (Double, Double) { (Double(p.x) * w, Double(p.y) * h) }
@@ -257,10 +310,7 @@ struct VisionDocumentFrameEvaluator: DocumentFrameEvaluating {
         let leftEdge = distance(tl, bl)
         let rightEdge = distance(tr, br)
 
-        let horizontal = (topEdge + bottomEdge) / 2
-        let vertical = (leftEdge + rightEdge) / 2
-        guard horizontal > 0, vertical > 0 else { return 0 }
-        return max(horizontal, vertical) / min(horizontal, vertical)
+        return ((topEdge + bottomEdge) / 2, (leftEdge + rightEdge) / 2)
     }
 
     /// Strided BGRA pass over the document's bounding box: Laplacian-variance

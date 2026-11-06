@@ -16,6 +16,9 @@ private final class FakeClassifier: DocumentClassifying {
     private(set) var observed = 0
     private(set) var captures: [Bool] = []
     private(set) var stopped = false
+    var shown: ShownDocument?
+
+    var shownDocument: ShownDocument? { shown }
 
     init(_ verdict: ClassifierVerdict) {
         self.verdict = verdict
@@ -40,7 +43,7 @@ private final class FakeClassifier: DocumentClassifying {
 }
 
 private struct StillEncoder: DocumentStillEncoding {
-    func encode(_ frame: CameraFrame, documentType: DocumentType) throws -> FileInput {
+    func encode(_ frame: CameraFrame, documentType: DocumentType, window: CaptureWindow?) throws -> FileInput {
         .data(Data([0xFF, 0xD8, 0xFF, UInt8(frame.index % 256)]))
     }
 }
@@ -53,6 +56,9 @@ private struct Authorized: CameraAuthorizing {
 private let good = CaptureQuality(
     documentDetected: true, fillRatio: 0.72, aspectRatio: 1.586, sharpness: 300, glareRatio: 0)
 private let noDocument = CaptureQuality(documentDetected: false)
+/// An open passport booklet, as Vision measures it around the photo page.
+private let page = CaptureQuality(
+    documentDetected: true, fillRatio: 0.76, aspectRatio: 1.2, sharpness: 50, glareRatio: 0)
 /// In position and steady, but under the blur bar, as a legible card scores on an
 /// iPad front camera.
 private let soft = CaptureQuality(
@@ -82,7 +88,7 @@ private func makeCapture(
         authorizer: Authorized(),
         tunables: .init(
             stabilityFrameCount: 2, holdStillDuration: 0, sideCapturedDisplay: 0,
-            classifierHoldDuration: 0, steadyCaptureDuration: 0,
+            doneDisplay: 0, classifierHoldDuration: 0, steadyCaptureDuration: 0,
             sharpnessWindow: sharpnessWindow, sharpnessWaitLimit: sharpnessWaitLimit),
         classifier: classifier,
         usesClassifierRules: rules,
@@ -239,7 +245,7 @@ private func makeCapture(
     #expect(!makeStep(availability: availability, spy: StepSpy()).usesClassifierRules)
 }
 
-@MainActor @Test func cardBacksAndPassportsNeverReachTheClassifier() async {
+@MainActor @Test func cardBacksNeverReachTheClassifierButPassportPagesDo() async {
     let spy = CaptureSpy()
     let classifier = FakeClassifier(.go)
     let card = makeCapture(
@@ -253,11 +259,67 @@ private func makeCapture(
     let passportSpy = CaptureSpy()
     let passportClassifier = FakeClassifier(.hold(.identifying))
     let passport = makeCapture(
-        type: .passport, qualities: [good, good], classifier: passportClassifier, spy: passportSpy)
+        type: .passport, qualities: [page, page, page], classifier: passportClassifier,
+        spy: passportSpy)
     await passport.run()
-    #expect(passportSpy.completed.count == 1)
-    #expect(passportClassifier.observed == 0)
-    #expect(passportSpy.reports.first?.classification == nil)
+    #expect(passportSpy.completed.isEmpty, "the classifier holds the page until it is steady")
+    #expect(passportClassifier.observed == 3)
+    #expect(passportSpy.failure?.kind == .captureFailed)
+}
+
+@MainActor @Test func aPassportPageTheClassifierPassesIsCapturedAndReported() async {
+    let spy = CaptureSpy()
+    let classifier = FakeClassifier(.go)
+    let model = makeCapture(
+        type: .passport, qualities: [page, page], classifier: classifier, spy: spy)
+    await model.run()
+    #expect(spy.completed.count == 1)
+    #expect(spy.completed.first?.back == nil)
+    #expect(classifier.captures == [false])
+    #expect(spy.reports.count == 1)
+}
+
+@MainActor @Test func theRecognisedDocumentAndThePhotoReachTheScreen() async {
+    let spy = CaptureSpy()
+    let classifier = FakeClassifier(.go)
+    classifier.shown = ShownDocument(id: "ca_on_dl", confirmed: true)
+    let model = makeCapture(
+        type: .driversLicense, captureMode: .frontOnly, qualities: [good, good],
+        classifier: classifier, spy: spy)
+    #expect(model.isFinalSide)
+    await model.run()
+    #expect(model.shownDocument?.label == "Ontario Driver's License")
+    #expect(spy.completed.count == 1)
+}
+
+@MainActor @Test func aTwoSidedCardIsOnlyFinalOnItsBack() {
+    let model = makeCapture(
+        type: .driversLicense, qualities: [], classifier: nil, spy: CaptureSpy())
+    #expect(model.hasBack)
+    #expect(!model.isFinalSide)
+}
+
+@MainActor @Test func theScreenEndsOnTheProcessingStage() async {
+    let spy = CaptureSpy()
+    let model = makeCapture(
+        type: .passport, qualities: [page, page], classifier: FakeClassifier(.go), spy: spy)
+    #expect(model.stage == .findDocument)
+    await model.run()
+    #expect(model.stage == .processing)
+}
+
+@MainActor @Test func anOpenBookletIsFramedForAPassport() async {
+    // The shape Vision measured around an open booklet on the iPad front camera.
+    for aspect in [1.11, 1.19, 1.24] {
+        var booklet = page
+        booklet.aspectRatio = aspect
+        let spy = CaptureSpy()
+        let model = makeCapture(
+            type: .passport, qualities: [booklet, booklet], classifier: FakeClassifier(.go),
+            spy: spy)
+        await model.run()
+        #expect(spy.completed.count == 1, "aspect \(aspect)")
+    }
 }
 
 @MainActor @Test func cancellingStopsTheClassifier() async {
@@ -423,11 +485,11 @@ private func available(sendsExtraFrames: Bool = false) async -> ClassifierAvaila
     #expect(offSpy.submissions.first?.extraFrameUploads.isEmpty == true)
 }
 
-@MainActor @Test func passportsAndAnUnavailableClassifierGetNoScanner() async {
+@MainActor @Test func passportsGetAScannerAndAnUnavailableClassifierNone() async {
     let availability = ClassifierAvailability()
     let model = makeStep(availability: availability, spy: StepSpy())
     #expect(model.classifier(for: .driversLicense) != nil)
-    #expect(model.classifier(for: .passport) == nil)
+    #expect(model.classifier(for: .passport) != nil)
     availability.record(.failure(DetectFailure(status: 403, reason: .unavailable)))
     #expect(model.classifier(for: .driversLicense) == nil)
     #expect(makeStep(availability: nil, spy: StepSpy()).classifier(for: .idCard) == nil)

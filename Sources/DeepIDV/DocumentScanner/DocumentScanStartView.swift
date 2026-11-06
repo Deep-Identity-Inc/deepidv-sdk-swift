@@ -14,6 +14,7 @@ import SwiftUI
 struct DocumentScanStartView: View {
     @Environment(\.theme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var scheme
     @State private var page = 0
     /// Begins capture. Invoked by both Continue and Skip.
     let onStart: () -> Void
@@ -28,10 +29,10 @@ struct DocumentScanStartView: View {
     /// onboarding.
     private static let pages: [IntroPage] = [
         IntroPage(
-            symbol: "person.text.rectangle", headline: "Place your valid ID inside the frame"),
-        IntroPage(symbol: "globe.americas.fill", headline: "Hold your phone steady"),
+            symbol: "person.text.rectangle", headline: L("Place your valid ID inside the frame")),
+        IntroPage(symbol: "globe.americas.fill", headline: L("Hold your phone steady")),
         IntroPage(
-            symbol: "doc.text.magnifyingglass", headline: "Make sure information is readable"),
+            symbol: "doc.text.magnifyingglass", headline: L("Make sure information is readable")),
     ]
 
     /// How long each page stays before the carousel advances to the next.
@@ -39,6 +40,7 @@ struct DocumentScanStartView: View {
 
     var body: some View {
         let current = Self.pages[page]
+        let palette = Kit.Palette(theme, scheme)
 
         VStack(spacing: theme.spacing.xl) {
             Spacer()
@@ -57,7 +59,7 @@ struct DocumentScanStartView: View {
 
                 Text(current.headline)
                     .font(theme.typography.heading(size: 22))
-                    .foregroundStyle(theme.colors.grey.s900)
+                    .foregroundStyle(palette.text)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, theme.spacing.md)
                     // Reserve two lines so the dots don't jump as headlines change.
@@ -70,29 +72,15 @@ struct DocumentScanStartView: View {
 
             Spacer()
 
-            HStack(spacing: theme.spacing.md) {
-                Button(action: onStart) {
-                    Text("Skip")
-                        .font(theme.typography.button(size: 16))
-                        .foregroundStyle(theme.colors.grey.s600)
-                        .frame(maxWidth: .infinity)
-                        .padding(theme.spacing.md)
-                }
-                Button(action: onStart) {
-                    Text("Continue")
-                        .font(theme.typography.button(size: 16))
-                        .foregroundStyle(theme.colors.grey.s50)
-                        .frame(maxWidth: .infinity)
-                        .padding(theme.spacing.md)
-                        .background(theme.colors.primary)
-                        .clipShape(
-                            RoundedRectangle(cornerRadius: theme.spacing.sm, style: .continuous))
-                }
+            VStack(spacing: theme.spacing.xs) {
+                Kit.PrimaryButton(title: L("Continue"), action: onStart)
+                Kit.SecondaryButton(title: L("Skip"), action: onStart)
             }
         }
         .padding(theme.spacing.lg)
+        .frame(maxWidth: 520)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(theme.colors.grey.s50)
+        .background(palette.background.ignoresSafeArea())
         .task { await autoAdvance() }
     }
 
@@ -101,7 +89,7 @@ struct DocumentScanStartView: View {
         HStack(spacing: theme.spacing.xs) {
             ForEach(Self.pages.indices, id: \.self) { index in
                 Capsule()
-                    .fill(index == page ? theme.colors.primary : theme.colors.grey.s300)
+                    .fill(index == page ? theme.colors.primary : Kit.Palette(theme, scheme).cardLine)
                     .frame(width: index == page ? 24 : 6, height: 6)
             }
         }

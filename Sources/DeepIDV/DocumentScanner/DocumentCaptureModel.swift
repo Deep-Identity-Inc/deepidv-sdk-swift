@@ -6,6 +6,7 @@ import CoreGraphics
 import DeepIDVCore
 import Foundation
 import OSLog
+import UIKit
 
 /// The guided document-capture coordinator — the testable brain behind
 /// ``DocumentScannerView`` and the document step of the drop-in verify flow.
@@ -43,9 +44,17 @@ final class DocumentCaptureModel<Output>: ObservableObject {
 
     // MARK: - Published state (drives the overlay)
 
-    @Published private(set) var phase: Phase = .capturingFront
+    @Published private(set) var phase: Phase = .capturingFront {
+        didSet { refreshStage() }
+    }
     /// The live guidance hint for the current frame, or `nil` once a side locks.
-    @Published private(set) var guidance: CaptureGuidance?
+    @Published private(set) var guidance: CaptureGuidance? {
+        didSet { refreshStage() }
+    }
+    /// The one instruction on screen. It follows `guidance` and the phase, but a
+    /// new stage only replaces the shown one once it has held for a moment, so a
+    /// reading that changes frame to frame doesn't flash (``CaptureStagePresenter``).
+    @Published private(set) var stage: CaptureStage = .findDocument
     /// Whether the manual shutter should be offered (auto-capture timed out).
     @Published private(set) var manualShutterVisible = false
     /// Set when camera access is denied — the view shows a Settings deep-link CTA.
@@ -54,7 +63,13 @@ final class DocumentCaptureModel<Output>: ObservableObject {
     @Published private(set) var holdProgress: Double = 0
     /// Set briefly after a side locks so the overlay can flash a success
     /// checkmark before the flow advances (to the back, or to processing).
-    @Published private(set) var showSideCaptured = false
+    @Published private(set) var showSideCaptured = false {
+        didSet { refreshStage() }
+    }
+    /// The document the classifier names on the front, for the screen's label.
+    @Published private(set) var shownDocument: ShownDocument?
+    /// The photo just taken, shown in the frame while the side is confirmed.
+    @Published private(set) var capturedImage: UIImage?
 
     // MARK: - Dependencies
 
@@ -67,7 +82,8 @@ final class DocumentCaptureModel<Output>: ObservableObject {
     private let tunables: DocumentCaptureTunables
     private let complete: CompleteOperation
     private let onResult: (Result<Output, DeepIDVError>) -> Void
-    /// The document classifier for card fronts, or `nil` for on-device checks only.
+    /// The document classifier for card fronts and passport pages, or `nil` for
+    /// on-device checks only.
     private let classifier: (any DocumentClassifying)?
     /// The session captures by the classifier's rules (ID capture v2): blur never
     /// holds a frame back on any side, and a back or a passport page is captured
@@ -102,6 +118,9 @@ final class DocumentCaptureModel<Output>: ObservableObject {
     private var documentSeenOnSide = false
     /// When the manual shutter is due to show.
     private var shutterDeadline: Date?
+    private var stagePresenter = CaptureStagePresenter()
+    /// The capture frame drawn on screen. `nil` until the screen reports it.
+    private var guide: CaptureWindow?
 
     /// Capture diagnostics. Filter the Xcode console / Console.app by this
     /// subsystem (`com.deepidv.sdk`) to see why auto-capture is or isn't locking.
@@ -157,6 +176,15 @@ final class DocumentCaptureModel<Output>: ObservableObject {
     }
 
     /// Requests a manual capture of the next frame — the shutter-button action.
+    /// Where the frame is drawn, so "close enough" means filling it. The
+    /// preview fills the screen, cropping the camera's view to the screen's
+    /// shape, so the frame's share of the camera frame follows from both.
+    /// The photo uploaded is cut to the same frame.
+    func guideChanged(_ window: CaptureWindow) {
+        guard window.rect.width > 0, window.screenAspect > 0 else { return }
+        guide = window
+    }
+
     func triggerManualCapture() {
         manualRequested = true
     }
@@ -182,12 +210,12 @@ final class DocumentCaptureModel<Output>: ObservableObject {
         switch phase {
         case .capturingFront:
             return captureMode == .frontOnly
-                ? "Position your document in the frame"
-                : "Scan the front of your document"
+                ? L("Position your document in the frame")
+                : L("Scan the front of your document")
         case .capturingBack:
-            return "Flip your document and scan the back"
+            return L("Flip your document and scan the back")
         case .processing:
-            return "Processing…"
+            return L("Processing…")
         }
     }
 
@@ -195,10 +223,31 @@ final class DocumentCaptureModel<Output>: ObservableObject {
     /// the pill disappears when there's nothing left to position.
     var sideLabel: String? {
         switch phase {
-        case .capturingFront: return "Front of your ID"
-        case .capturingBack: return "Back of your ID"
+        case .capturingFront: return L("Front of your ID")
+        case .capturingBack: return L("Back of your ID")
         case .processing: return nil
         }
+    }
+
+    /// The document has a back to capture after the front.
+    var hasBack: Bool { captureMode == .frontAndBack }
+
+    /// The side being captured is the last one.
+    var isFinalSide: Bool { phase == .capturingBack || !hasBack }
+
+    // MARK: - Stage
+
+    /// The stage the capture is in right now, before settling.
+    private var currentStage: CaptureStage {
+        if phase == .processing { return .processing }
+        if showSideCaptured { return .captured }
+        if phase == .capturingBack, !backArmed { return .flip }
+        return guidance.map(CaptureStage.init) ?? .findDocument
+    }
+
+    private func refreshStage() {
+        let next = stagePresenter.update(currentStage, at: clock())
+        if next != stage { stage = next }
     }
 
     // MARK: - Capture loop
@@ -226,8 +275,8 @@ final class DocumentCaptureModel<Output>: ObservableObject {
                 continue
             }
 
-            // The classifier only looks at card fronts: backs and passports skip it.
-            let sideClassifier = capturingBack || documentType == .passport ? nil : classifier
+            // The classifier looks at card fronts and passport pages: backs skip it.
+            let sideClassifier = capturingBack ? nil : classifier
             if !shouldCapture(frame, classifier: sideClassifier) { continue }
 
             // Lock acquired — grab a full-resolution still; fall back to the
@@ -240,13 +289,22 @@ final class DocumentCaptureModel<Output>: ObservableObject {
             }
             if isCancelled { return }
 
+            // Cutting and re-encoding a full-size photo takes a while: off the
+            // main actor, so the screen doesn't freeze while it runs.
             var input: FileInput
             do {
-                input = try encoder.encode(captured, documentType: documentType)
+                let encoder = self.encoder
+                let documentType = self.documentType
+                let window = guide
+                input = try await Task.detached {
+                    try encoder.encode(captured, documentType: documentType, window: window)
+                }.value
             } catch {
+                if isCancelled { return }
                 finishCaptureFailed(error, fallback: "Unable to process the captured image.")
                 return
             }
+            if isCancelled { return }
 
             if !capturingBack {
                 let report =
@@ -258,16 +316,20 @@ final class DocumentCaptureModel<Output>: ObservableObject {
                 onFrontCaptured?(report)
             }
 
+            capturedImage = ClassifierImages.data(of: input).flatMap(UIImage.init(data:))
+
             // Two-sided document, front just captured → flash a confirmation,
             // then advance to the back.
             if !capturingBack, captureMode == .frontAndBack {
                 frontInput = input
-                await confirmSideCaptured()
+                await confirmSideCaptured(for: tunables.sideCapturedDisplay)
                 if isCancelled { return }
                 capturingBack = true
                 backArmed = false
                 phase = .capturingBack
                 guidance = nil
+                shownDocument = nil
+                capturedImage = nil
                 manualRequested = false
                 steadyStartedAt = nil
                 sharpnessWaitSince = nil
@@ -281,7 +343,7 @@ final class DocumentCaptureModel<Output>: ObservableObject {
 
             // Final side captured (passport front, or a card's back).
             cancelManualShutterTimer()
-            await confirmSideCaptured()
+            await confirmSideCaptured(for: tunables.doneDisplay)
             if isCancelled { return }
             await submit(
                 front: capturingBack ? (frontInput ?? input) : input,
@@ -315,6 +377,15 @@ final class DocumentCaptureModel<Output>: ObservableObject {
             return true
         }
         lastCaptureWasManual = false
+        if let guide, let buffer = frame.pixelBuffer {
+            let height = Double(CVPixelBufferGetHeight(buffer))
+            let aspect = height > 0 ? Double(CVPixelBufferGetWidth(buffer)) / height : 0
+            analyzer.guideFill = DocumentCaptureAnalyzer.guideFill(
+                widthShare: Double(guide.rect.width), screenAspect: guide.screenAspect,
+                frameAspect: aspect, share: tunables.guideFillShare)
+            analyzer.framesTurnedFromScreen =
+                aspect > 0 && (aspect >= 1) != (guide.screenAspect >= 1)
+        }
         let quality = evaluator.quality(of: frame, for: documentType)
         lastQuality = quality
         let now = clock()
@@ -330,9 +401,12 @@ final class DocumentCaptureModel<Output>: ObservableObject {
         // photo; without them, the blur gate stands as before.
         let decision = analyzer.evaluate(quality, checksSharpness: !usesClassifierRules)
         if let classifier {
+            if let guide { classifier.windowChanged(guide) }
             classifier.observe(
                 frame, quality: quality, framed: analyzer.isFramed(quality),
                 visionReady: decision == .capture, at: now)
+            let named = classifier.shownDocument
+            if named != shownDocument { shownDocument = named }
             switch classifier.verdict(at: now) {
             case .off:
                 break
@@ -350,11 +424,13 @@ final class DocumentCaptureModel<Output>: ObservableObject {
                 }
                 return false
             case .go:
-                return dwell(decision, quality, duration: tunables.classifierHoldDuration)
+                // A passport page has already been good for its steady time.
+                let hold = documentType == .passport ? 0 : tunables.classifierHoldDuration
+                return dwell(decision, quality, duration: hold)
             }
         }
         // A back or a passport page under the classifier's rules: once steady.
-        let steadyOnly = usesClassifierRules && classifier == nil
+        let steadyOnly = usesClassifierRules && (classifier == nil || documentType == .passport)
         return dwell(
             decision, quality,
             duration: steadyOnly ? tunables.steadyCaptureDuration : tunables.holdStillDuration)
@@ -451,12 +527,12 @@ final class DocumentCaptureModel<Output>: ObservableObject {
     /// Flashes the captured-side checkmark for a beat so the user gets clear
     /// per-side feedback before the flow moves on. Clears the live guidance
     /// and dwell so nothing competes with the confirmation.
-    private func confirmSideCaptured() async {
+    private func confirmSideCaptured(for duration: TimeInterval) async {
         guidance = nil
         holdProgress = 0
         steadyStartedAt = nil
         showSideCaptured = true
-        try? await Task.sleep(nanoseconds: UInt64(tunables.sideCapturedDisplay * 1_000_000_000))
+        try? await Task.sleep(nanoseconds: UInt64(max(0, duration) * 1_000_000_000))
         showSideCaptured = false
     }
 

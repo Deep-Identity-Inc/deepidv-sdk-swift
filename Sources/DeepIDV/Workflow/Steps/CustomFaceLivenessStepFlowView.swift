@@ -39,38 +39,22 @@ struct CustomFaceLivenessStepFlowView: View {
                 client: client,
                 sessionID: sessionID,
                 retryCopy: model.retryCopy,
+                onCancel: model.cancel,
                 onResult: { model.attemptFinished($0) })
 
             if model.state == .syncing {
-                syncingOverlay
+                Kit.StatusScreen(
+                    badge: .working(symbol: "checkmark.shield.fill"),
+                    title: L("Checking your result"), message: L("This only takes a moment"))
+                    .transition(.opacity)
             }
         }
+        .animation(.easeInOut(duration: 0.25), value: model.state == .syncing)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(theme.colors.grey.s50)
-        .overlay(alignment: .topTrailing) { cancelButton }
         .onAppear {
             let model = model
             registerCancellation { [weak model] in model?.cancel() }
         }
         .onDisappear { model.cancel() }
-    }
-
-    private var syncingOverlay: some View {
-        VStack(spacing: theme.spacing.md) {
-            ProgressView()
-            Text("Checking your liveness result…")
-                .font(theme.typography.body())
-                .foregroundStyle(theme.colors.grey.s700)
-        }
-        .padding(theme.spacing.lg)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(theme.colors.grey.s50.opacity(0.92))
-    }
-
-    private var cancelButton: some View {
-        Button("Cancel", action: model.cancel)
-            .font(theme.typography.button(size: 16))
-            .foregroundStyle(theme.colors.grey.s600)
-            .padding(theme.spacing.md)
     }
 }

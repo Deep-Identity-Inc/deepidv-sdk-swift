@@ -25,7 +25,6 @@ struct ReVerifyFlowView: View {
     var body: some View {
         content
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(theme.colors.grey.s50)
             .task { model.start() }
             .onDisappear { model.cancel() }
     }
@@ -34,13 +33,15 @@ struct ReVerifyFlowView: View {
     private var content: some View {
         switch model.phase {
         case .checking:
-            progressView("Preparing your liveness check…")
+            progressView(
+                L("Getting ready"), symbol: "faceid",
+                message: L("Next, a quick check that it's really you"), onClose: model.cancel)
         case .liveness(let session, let attemptsRemaining, let guidance):
             livenessView(session, attemptsRemaining: attemptsRemaining, guidance: guidance)
         case .uploading:
-            progressView("Uploading your capture…")
+            progressView(L("Sending your check"), symbol: "arrow.up", message: L("This only takes a moment"))
         case .deciding:
-            progressView("Checking your identity… this can take a few seconds")
+            progressView(L("Checking it's you"), symbol: "checkmark.shield.fill", message: L("This can take a few seconds"))
         case .failed(let error):
             failureView(error)
         case .outcome:
@@ -60,11 +61,13 @@ struct ReVerifyFlowView: View {
         let livenessSessionID = session.livenessSessionID
         return CaptureRunView(
             script: session.script,
+            onCancel: model.cancel,
             onCaptured: { model.captured($0, livenessSessionID: livenessSessionID) },
             onError: { model.captureFailed($0, livenessSessionID: livenessSessionID) }
         )
         .id(livenessSessionID)
-        .overlay(alignment: .top) {
+        // At the bottom, clear of the close button and the instruction.
+        .overlay(alignment: .bottom) {
             attemptBanner(attemptsRemaining: attemptsRemaining, guidance: guidance)
         }
     }
@@ -73,24 +76,36 @@ struct ReVerifyFlowView: View {
     private func attemptBanner(attemptsRemaining: Int?, guidance: ReVerifyGuidance) -> some View {
         let message = Self.guidanceText(guidance)
         if message != nil || attemptsRemaining != nil {
-            VStack(spacing: theme.spacing.xs) {
-                if let message {
-                    Text(message)
-                        .font(theme.typography.body())
-                        .foregroundStyle(theme.colors.grey.s900)
-                }
-                if let attemptsRemaining {
-                    Text(Self.attemptsText(attemptsRemaining))
-                        .font(theme.typography.body(size: 14))
-                        .foregroundStyle(theme.colors.grey.s700)
+            HStack(alignment: .top, spacing: theme.spacing.sm) {
+                Image(systemName: "exclamationmark.circle.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(theme.colors.warning)
+                    .opacity(message == nil ? 0 : 1)
+                VStack(alignment: .leading, spacing: 2) {
+                    if let message {
+                        Text(message)
+                            .font(theme.typography.body(size: 15).weight(.medium))
+                            .foregroundStyle(theme.colors.grey.s50)
+                    }
+                    if let attemptsRemaining {
+                        Text(Self.attemptsText(attemptsRemaining))
+                            .font(theme.typography.body(size: 13))
+                            .foregroundStyle(theme.colors.grey.s50.opacity(0.7))
+                    }
                 }
             }
-            .multilineTextAlignment(.center)
-            .padding(theme.spacing.md)
+            .padding(.horizontal, theme.spacing.md)
+            .padding(.vertical, 12)
             .frame(maxWidth: Self.maxContentWidth)
-            .background(theme.colors.grey.s50.opacity(0.9))
-            .clipShape(RoundedRectangle(cornerRadius: theme.spacing.sm, style: .continuous))
+            .background(
+                RoundedRectangle(cornerRadius: theme.cardRadius, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .environment(\.colorScheme, .dark)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: theme.cardRadius, style: .continuous)
+                            .fill(Color.black.opacity(0.35))))
             .padding(theme.spacing.md)
+            .accessibilityElement(children: .combine)
         }
     }
 
@@ -99,28 +114,23 @@ struct ReVerifyFlowView: View {
         case .initial:
             nil
         case .retryMismatch:
-            "We couldn't match your face — try again in good lighting, facing the camera"
+            L("We couldn't match your face — try again in good lighting, facing the camera")
         case .retryLiveness:
-            "The liveness check didn't pass — hold still and follow the prompts"
+            L("The liveness check didn't pass — hold still and follow the prompts")
         }
     }
 
     private static func attemptsText(_ count: Int) -> String {
-        count == 1 ? "1 attempt remaining" : "\(count) attempts remaining"
+        count == 1 ? L("1 attempt remaining") : L("%d attempts remaining", count)
     }
 
-    // MARK: - Themed chrome
+    // MARK: - Status screens
 
-    private func progressView(_ title: String) -> some View {
-        VStack(spacing: theme.spacing.lg) {
-            ProgressView()
-            Text(title)
-                .font(theme.typography.body())
-                .foregroundStyle(theme.colors.grey.s700)
-                .multilineTextAlignment(.center)
-        }
-        .padding(theme.spacing.lg)
-        .frame(maxWidth: Self.maxContentWidth)
+    private func progressView(
+        _ title: String, symbol: String, message: String, onClose: (() -> Void)? = nil
+    ) -> some View {
+        Kit.StatusScreen(
+            badge: .working(symbol: symbol), title: title, message: message, onClose: onClose)
     }
 
     /// Text comes only from ``ReVerifyCopy`` — never `error.message`. Scrolls
@@ -129,43 +139,22 @@ struct ReVerifyFlowView: View {
     private func failureView(_ error: DeepIDVError) -> some View {
         GeometryReader { proxy in
             ScrollView {
-                VStack(spacing: theme.spacing.lg) {
-                    Spacer(minLength: 0)
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 56))
-                        .foregroundStyle(theme.colors.warning)
-                    Text(ReVerifyCopy.message(for: error))
-                        .font(theme.typography.body())
-                        .foregroundStyle(theme.colors.grey.s900)
-                        .multilineTextAlignment(.center)
-                    Spacer(minLength: 0)
+                Group {
                     if model.canRetry {
-                        primaryButton("Try again", action: model.retry)
-                        Button("Close", action: model.dismissFailure)
-                            .font(theme.typography.button(size: 16))
-                            .foregroundStyle(theme.colors.grey.s600)
-                            .padding(theme.spacing.sm)
+                        Kit.StatusScreen(
+                            badge: .warning, title: L("That didn't work"),
+                            message: ReVerifyCopy.message(for: error),
+                            primary: .init(title: L("Try again"), run: model.retry),
+                            secondary: .init(title: L("Close"), run: model.dismissFailure))
                     } else {
-                        primaryButton("Close", action: model.dismissFailure)
+                        Kit.StatusScreen(
+                            badge: .warning, title: L("We couldn't continue"),
+                            message: ReVerifyCopy.message(for: error),
+                            primary: .init(title: L("Close"), run: model.dismissFailure))
                     }
                 }
-                .padding(theme.spacing.lg)
-                .frame(maxWidth: Self.maxContentWidth)
                 .frame(minWidth: proxy.size.width, minHeight: proxy.size.height)
             }
-        }
-    }
-
-    private func primaryButton(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(theme.typography.button(size: 16))
-                .foregroundStyle(theme.colors.grey.s50)
-                .padding(theme.spacing.md)
-                .frame(maxWidth: .infinity)
-                .background(theme.colors.primary)
-                .clipShape(
-                    RoundedRectangle(cornerRadius: theme.spacing.sm, style: .continuous))
         }
     }
 }

@@ -32,7 +32,7 @@ private func stubResult() -> DocumentScanResult {
 /// Returns canned JPEG-magic bytes, or throws a scripted error.
 private struct StubStillEncoder: DocumentStillEncoding {
     var error: DeepIDVError?
-    func encode(_ frame: CameraFrame, documentType: DocumentType) throws -> FileInput {
+    func encode(_ frame: CameraFrame, documentType: DocumentType, window: CaptureWindow?) throws -> FileInput {
         if let error { throw error }
         return .data(Data([0xFF, 0xD8, 0xFF, 0xE0]))
     }
@@ -94,7 +94,8 @@ private func makeModel(
         // the analyzer's first `.capture` — keeps these frame-driven tests deterministic.
         // sideCapturedDisplay 0: skip the per-side confirmation flash so the flow
         // doesn't sleep between sides.
-        tunables: .init(stabilityFrameCount: 4, holdStillDuration: 0, sideCapturedDisplay: 0),
+        tunables: .init(stabilityFrameCount: 4, holdStillDuration: 0, sideCapturedDisplay: 0,
+            doneDisplay: 0),
         complete: { front, back, type in try await scanSpy.scan(front, back, type) },
         onResult: { resultSpy.result = $0 })
 }

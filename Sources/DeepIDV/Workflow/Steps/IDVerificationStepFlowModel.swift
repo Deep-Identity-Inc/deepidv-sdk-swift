@@ -11,9 +11,9 @@ enum IDVerificationDocumentSlot: Sendable, Equatable, Hashable {
 
     var title: String {
         switch self {
-        case .primary: return "primary ID"
-        case .secondary: return "secondary ID"
-        case .tertiary: return "tertiary ID"
+        case .primary: return L("primary ID")
+        case .secondary: return L("secondary ID")
+        case .tertiary: return L("tertiary ID")
         }
     }
 
@@ -174,6 +174,11 @@ final class IDVerificationStepFlowModel: ObservableObject {
     private var selections: [IDVerificationDocumentSlot: WorkflowDocumentTypeOption] = [:]
     private var captures: [IDVerificationDocumentSlot: Capture] = [:]
     private var selfie: FileInput?
+
+    /// The primary document's front and the selfie, shown while they are sent.
+    var submittedPhotos: (document: FileInput?, selfie: FileInput?) {
+        (captures[.primary]?.front, selfie)
+    }
     /// Document upload keys from the last upload, kept so a selfie-only retry
     /// can resubmit them without uploading the documents again.
     private var documentUploadKeys: [SessionUploadSlot: String] = [:]
@@ -219,7 +224,7 @@ final class IDVerificationStepFlowModel: ObservableObject {
                     "This workflow does not provide a supported document type."))
             return
         }
-        phase = .selectingType(index: 0)
+        beginSelection(at: 0)
     }
 
     func selectDocumentType(_ documentType: DocumentType) {
@@ -235,8 +240,6 @@ final class IDVerificationStepFlowModel: ObservableObject {
         phase = capturePhase(slot: slot, option: option)
     }
 
-    /// A classifier for a card front of `type`, or `nil` (passports, or the
-    /// classifier is off or unavailable for this session).
     /// Whether captures follow the classifier's rules (blur never holds a frame
     /// back; a back or a passport page is taken once steady): the classifier is
     /// set up and not ruled out for this session.
@@ -244,8 +247,10 @@ final class IDVerificationStepFlowModel: ObservableObject {
         classifierSetup.map { $0.availability.state != .unavailable } ?? false
     }
 
+    /// A classifier for the front or passport page of `type`, or `nil` when the
+    /// classifier is off or unavailable for this session.
     func classifier(for type: DocumentType) -> (any DocumentClassifying)? {
-        guard let classifierSetup, type != .passport,
+        guard let classifierSetup,
             classifierSetup.availability.state != .unavailable
         else { return nil }
         return classifierSetup.make(type, classifierSetup.availability)
@@ -288,7 +293,7 @@ final class IDVerificationStepFlowModel: ObservableObject {
         if let kept = selections[nextSlot] {
             phase = capturePhase(slot: nextSlot, option: kept)
         } else {
-            phase = .selectingType(index: nextIndex)
+            beginSelection(at: nextIndex)
         }
     }
 
@@ -337,7 +342,7 @@ final class IDVerificationStepFlowModel: ObservableObject {
             }
             documentUploadKeys.removeAll()
             extraFrameKeys.removeAll()
-            phase = .selectingType(index: index)
+            beginSelection(at: index)
 
         case .retakeDocument:
             let index = slotIndex(for: failure?.slot)
@@ -372,7 +377,16 @@ final class IDVerificationStepFlowModel: ObservableObject {
         frontReports.removeAll()
         documentUploadKeys.removeAll()
         extraFrameKeys.removeAll()
-        phase = .selectingType(index: 0)
+        beginSelection(at: 0)
+    }
+
+    /// Asks for the document type of the slot at `index`, or, when the workflow
+    /// allows only one type, picks it without asking.
+    private func beginSelection(at index: Int) {
+        phase = .selectingType(index: index)
+        if documentTypeOptions.count == 1, let only = documentTypeOptions.first {
+            selectDocumentType(only.documentType)
+        }
     }
 
     /// The position of the document a failure is attributed to. A failure

@@ -2,10 +2,12 @@
 
 import DeepIDVCore
 import SwiftUI
+import UIKit
 
 /// Captures every required document plus one selfie, then uploads and submits.
 struct IDVerificationStepFlowView: View {
     @Environment(\.theme) private var theme
+    @Environment(\.documentCameraOverride) private var cameraOverride
     @StateObject private var model: IDVerificationStepFlowModel
     private let registerCancellation: (@escaping () -> Void) -> Void
     private let documentCamera: DocumentCamera
@@ -24,7 +26,10 @@ struct IDVerificationStepFlowView: View {
                 requirements: requirements,
                 classifier: usesClassifier
                     ? IDVerificationStepFlowModel.ClassifierSetup(
-                        availability: ClassifierAvailability(),
+                        // Extra frames of each card front, which the server reads for a
+                        // date the photo left blank. A server that answers the
+                        // classifier accepts them too (they shipped together).
+                        availability: ClassifierAvailability(sendsExtraFrames: true),
                         make: { type, availability in
                             DocumentClassifierScanner(
                                 documentType: type,
@@ -72,7 +77,8 @@ struct IDVerificationStepFlowView: View {
                 let slot = model.slots[index]
                 DocumentTypePicker(
                     availableTypes: model.documentTypeOptions.map(\.documentType),
-                    heading: "Select your \(slot.title)",
+                    heading: slot == .primary
+                        ? L("Which ID will you use?") : L("Now choose your %@", slot.title),
                     onCancel: model.cancel,
                     onSelect: model.selectDocumentType
                 )
@@ -85,7 +91,7 @@ struct IDVerificationStepFlowView: View {
             DocumentCaptureFlowView<(FileInput, FileInput?)>(
                 documentType: type,
                 captureMode: captureMode,
-                cameraPosition: documentCamera.avPosition,
+                cameraPosition: (cameraOverride ?? documentCamera).avPosition,
                 showsIntro: showsIntro,
                 makeClassifier: { model.classifier(for: type) },
                 usesClassifierRules: model.usesClassifierRules,
@@ -115,7 +121,8 @@ struct IDVerificationStepFlowView: View {
                 })
 
         case .submitting:
-            progressView
+            let photos = model.submittedPhotos
+            SubmittingStep(document: photos.document, selfie: photos.selfie)
 
         case .retry(let failure, let attemptsRemaining):
             retryView(
@@ -127,64 +134,40 @@ struct IDVerificationStepFlowView: View {
         }
     }
 
-    private var progressView: some View {
-        VStack(spacing: theme.spacing.lg) {
-            Spacer()
-            ProgressView()
-            Text("Submitting your identity verification…")
-                .font(theme.typography.body())
-                .foregroundStyle(theme.colors.grey.s700)
-                .multilineTextAlignment(.center)
-            Spacer()
-            Button("Cancel", action: model.cancel)
-                .font(theme.typography.button(size: 16))
-                .foregroundStyle(theme.colors.grey.s600)
-        }
-        .padding(theme.spacing.lg)
-    }
-
     private func retryView(
         failure: WorkflowFailure?,
         attemptsRemaining: Int?
     ) -> some View {
         let copy = WorkflowFailureCopy.failure(failure, step: .idVerification)
-        return VStack(spacing: theme.spacing.lg) {
-            Spacer()
-            Image(systemName: "arrow.clockwise.circle.fill")
-                .font(.system(size: 64))
-                .foregroundStyle(theme.colors.warning)
-            Text(copy.title)
-                .font(theme.typography.heading())
-                .foregroundStyle(theme.colors.grey.s900)
-                .multilineTextAlignment(.center)
-            Text(copy.body)
-                .font(theme.typography.body())
-                .foregroundStyle(theme.colors.grey.s700)
-                .multilineTextAlignment(.center)
-            if let attemptsRemaining {
-                Text("\(attemptsRemaining) attempts remaining")
-                    .font(theme.typography.body(size: 14))
-                    .foregroundStyle(theme.colors.grey.s600)
+        return Kit.StatusScreen(
+            badge: .retry, title: copy.title, message: copy.body,
+            note: attemptsRemaining.map { $0 == 1 ? L("1 attempt left") : L("%d attempts left", $0) },
+            primary: .init(title: L("Try again"), run: model.retry),
+            secondary: .init(title: L("Cancel"), run: model.cancel))
+    }
+}
+
+/// The submitting screen, with the photos decoded off the main thread.
+private struct SubmittingStep: View {
+    let document: FileInput?
+    let selfie: FileInput?
+    @State private var documentImage: UIImage?
+    @State private var selfieImage: UIImage?
+
+    var body: some View {
+        SubmittingScreen(document: documentImage, selfie: selfieImage)
+            .task {
+                let document = self.document
+                let selfie = self.selfie
+                let images = await Task.detached {
+                    (document.flatMap(Self.image), selfie.flatMap(Self.image))
+                }.value
+                documentImage = images.0
+                selfieImage = images.1
             }
-            Spacer()
-            primaryButton("Try again", action: model.retry)
-            Button("Cancel", action: model.cancel)
-                .font(theme.typography.button(size: 16))
-                .foregroundStyle(theme.colors.grey.s600)
-        }
-        .padding(theme.spacing.lg)
     }
 
-    private func primaryButton(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(theme.typography.button(size: 16))
-                .foregroundStyle(theme.colors.grey.s50)
-                .padding(theme.spacing.md)
-                .frame(maxWidth: .infinity)
-                .background(theme.colors.primary)
-                .clipShape(
-                    RoundedRectangle(cornerRadius: theme.spacing.sm, style: .continuous))
-        }
+    nonisolated private static func image(_ file: FileInput) -> UIImage? {
+        ClassifierImages.data(of: file).flatMap(UIImage.init(data:))
     }
 }

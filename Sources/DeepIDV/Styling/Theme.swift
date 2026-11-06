@@ -4,14 +4,22 @@ import SwiftUI
 
 /// The complete set of design tokens SDK views resolve at render time.
 ///
-/// Exactly one value ships today — `.deepidv`, the fixed brand theme. Views read it
-/// from `@Environment(\.theme)` and must never hardcode a color, font, or spacing
-/// value inline. That discipline is the seam the (deferred) whitelabel story
-/// drops into: inject a different `Theme` and every view re-styles, untouched.
+/// `.deepidv` is the brand default; a host's ``DeepIDVAppearance`` is laid over
+/// it. Views read it from `@Environment(\.theme)` and never hardcode a color,
+/// font, spacing or corner radius inline, so every screen follows the host's
+/// choices.
 struct Theme: Sendable, Equatable {
     var colors: ColorTokens
     var typography: Typography
     var spacing: Spacing
+    /// The corner radius of buttons.
+    var cornerRadius: CGFloat = 14
+
+    /// Buttons.
+    var buttonRadius: CGFloat { cornerRadius }
+    /// Cards, list rows and photos: a little rounder than buttons, square
+    /// when buttons are.
+    var cardRadius: CGFloat { cornerRadius == 0 ? 0 : cornerRadius + 4 }
 }
 
 extension Theme {
@@ -33,9 +41,7 @@ private struct ThemeKey: EnvironmentKey {
 extension EnvironmentValues {
     /// The active design-system theme. Defaults to `.deepidv`.
     ///
-    /// No public `.deepIDVTheme(_:)` modifier ships yet — there's nothing for a
-    /// host to override. The setter stays reachable internally so the
-    /// whitelabel story can add that modifier later without touching any view.
+    /// Hosts set it through ``SwiftUI/View/deepIDVAppearance(_:)``.
     var theme: Theme {
         get { self[ThemeKey.self] }
         set { self[ThemeKey.self] = newValue }

@@ -4,6 +4,7 @@ import AVFoundation
 import Combine
 import DeepIDVCore
 import Foundation
+import UIKit
 
 /// The selfie-capture coordinator behind ``SelfieCaptureView`` — the testable
 /// brain of the plain front-camera capture (no liveness).
@@ -27,6 +28,8 @@ final class SelfieCaptureModel: ObservableObject {
     @Published private(set) var manualShutterVisible = false
     /// Set when camera access is denied — the view shows a Settings deep-link CTA.
     @Published private(set) var permissionDenied = false
+    /// The photo just taken, frozen in the oval for a moment before it is reported.
+    @Published private(set) var capturedImage: UIImage?
 
     // MARK: - Dependencies
 
@@ -101,7 +104,7 @@ final class SelfieCaptureModel: ObservableObject {
     }
 
     /// The framing instruction shown above the guide oval.
-    var instructionText: String { "Center your face in the circle" }
+    var instructionText: String { L("Center your face in the circle") }
 
     // MARK: - Capture loop
 
@@ -119,11 +122,16 @@ final class SelfieCaptureModel: ObservableObject {
             do { captured = try await controller.captureStill() } catch { captured = frame }
             if isCancelled { return }
             controller.stop()
+            let selfie: FileInput
             do {
-                finish(.success(try encoder.encode(captured)))
+                selfie = try encoder.encode(captured)
             } catch {
                 finishCaptureFailed(error, fallback: "Unable to process the selfie.")
+                return
             }
+            await showCaptured(selfie)
+            if isCancelled { return }
+            finish(.success(selfie))
             return
         }
 
@@ -133,6 +141,16 @@ final class SelfieCaptureModel: ObservableObject {
                 .failure(
                     .captureFailed("The camera stopped before a selfie could be captured.")))
         }
+    }
+
+    /// Freezes the photo in the oval, with a tick and a haptic, for
+    /// `capturedDisplay`.
+    private func showCaptured(_ selfie: FileInput) async {
+        guard tunables.capturedDisplay > 0 else { return }
+        capturedImage = ClassifierImages.data(of: selfie).flatMap(UIImage.init(data:))
+        guidance = nil
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        try? await Task.sleep(nanoseconds: UInt64(tunables.capturedDisplay * 1_000_000_000))
     }
 
     /// Whether to capture this frame — a manual request wins; otherwise the

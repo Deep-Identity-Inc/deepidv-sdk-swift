@@ -36,6 +36,8 @@ struct CustomFaceLivenessFlowView: View {
     /// Replaces the fixed not-passed copy when the host flow knows why the
     /// attempt failed. `nil` outside a workflow run.
     private let retryCopy: (title: String, body: String)?
+    /// Shows a close button; `nil` outside a workflow run.
+    private let onCancel: (() -> Void)?
     @State private var permissionDenied = false
     @State private var didBegin = false
 
@@ -43,6 +45,7 @@ struct CustomFaceLivenessFlowView: View {
         client: DeepIDVClient,
         sessionID: String,
         retryCopy: (title: String, body: String)? = nil,
+        onCancel: (() -> Void)? = nil,
         onResult: @escaping (Result<FaceLivenessResult, DeepIDVError>) -> Void
     ) {
         _model = StateObject(
@@ -52,13 +55,13 @@ struct CustomFaceLivenessFlowView: View {
                 onResult: onResult))
         self.onResult = onResult
         self.retryCopy = retryCopy
+        self.onCancel = onCancel
         self.authorizer = SystemCameraAuthorizer()
     }
 
     var body: some View {
         content
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(theme.colors.grey.s50)
             .task { await begin() }
     }
 
@@ -73,6 +76,7 @@ struct CustomFaceLivenessFlowView: View {
             case .capturing(let script):
                 CaptureRunView(
                     script: script,
+                    onCancel: onCancel,
                     onCaptured: { result in
                         let timeline = (try? JSONEncoder().encode(result.timeline)) ?? Data("[]".utf8)
                         model.submit(frames: result.frames, timeline: timeline, clip: result.clip)
@@ -86,81 +90,41 @@ struct CustomFaceLivenessFlowView: View {
         }
     }
 
-    // MARK: - Themed chrome
+    // MARK: - Status screens
 
     private var loadingView: some View {
-        VStack(spacing: theme.spacing.md) {
-            ProgressView()
-            Text("Preparing your liveness check…")
-                .font(theme.typography.body())
-                .foregroundStyle(theme.colors.grey.s600)
-        }
-        .padding(theme.spacing.lg)
+        Kit.StatusScreen(
+            badge: .working(symbol: "faceid"), title: L("Getting ready"),
+            message: L("Next, a quick check that it's really you"), onClose: onCancel)
     }
 
+    @ViewBuilder
     private func resultView(_ result: FaceLivenessResult) -> some View {
-        VStack(spacing: theme.spacing.md) {
-            Image(systemName: result.passed ? "checkmark.circle.fill" : "xmark.circle.fill")
-                .font(.system(size: 64))
-                .foregroundStyle(result.passed ? theme.colors.success : theme.colors.error)
-            Text(
-                result.passed
-                    ? "Liveness confirmed" : retryCopy?.title ?? "We couldn't verify you"
-            )
-            .font(theme.typography.heading())
-            .foregroundStyle(theme.colors.grey.s900)
-            .multilineTextAlignment(.center)
-            if !result.passed {
-                if let retryCopy {
-                    Text(retryCopy.body)
-                        .font(theme.typography.body())
-                        .foregroundStyle(theme.colors.grey.s700)
-                        .multilineTextAlignment(.center)
-                }
-                primaryButton("Try again", action: model.retry)
-            }
+        if result.passed {
+            Kit.StatusScreen(
+                badge: .success, title: L("Liveness confirmed"),
+                message: L("Thanks, that's everything we need"))
+        } else {
+            Kit.StatusScreen(
+                badge: .retry, title: retryCopy?.title ?? L("We couldn't verify you"),
+                message: retryCopy?.body
+                    ?? L("Make sure your face is well lit and fills the oval, then try again."),
+                primary: .init(title: L("Try again"), run: model.retry),
+                secondary: onCancel.map { .init(title: L("Cancel"), run: $0) })
         }
-        .padding(theme.spacing.lg)
     }
 
     private func errorView(_ error: DeepIDVError) -> some View {
-        VStack(spacing: theme.spacing.md) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 56))
-                .foregroundStyle(theme.colors.warning)
-            Text(WorkflowFailureCopy.error(error).body)
-                .font(theme.typography.body())
-                .foregroundStyle(theme.colors.grey.s700)
-                .multilineTextAlignment(.center)
-            primaryButton("Try again", action: model.retry)
-        }
-        .padding(theme.spacing.lg)
+        let copy = WorkflowFailureCopy.error(error)
+        return Kit.StatusScreen(
+            badge: .warning, title: copy.title, message: copy.body,
+            primary: .init(title: L("Try again"), run: model.retry),
+            secondary: onCancel.map { .init(title: L("Cancel"), run: $0) })
     }
 
     private var permissionDeniedView: some View {
-        VStack(spacing: theme.spacing.md) {
-            Text("Camera access needed")
-                .font(theme.typography.heading())
-                .foregroundStyle(theme.colors.grey.s900)
-            Text("Enable camera access in Settings to run the liveness check.")
-                .font(theme.typography.body())
-                .foregroundStyle(theme.colors.grey.s600)
-                .multilineTextAlignment(.center)
-            primaryButton("Open Settings", action: openSettings)
-        }
-        .padding(theme.spacing.lg)
-    }
-
-    private func primaryButton(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .font(theme.typography.button(size: 16))
-                .foregroundStyle(theme.colors.grey.s50)
-                .padding(theme.spacing.md)
-                .frame(maxWidth: .infinity)
-                .background(theme.colors.primary)
-                .clipShape(RoundedRectangle(cornerRadius: theme.spacing.sm, style: .continuous))
-        }
+        CaptureScreens.Permission(
+            purpose: L("check that it's really you"), onOpenSettings: openSettings)
     }
 
     // MARK: - Permission pre-check + start

@@ -30,6 +30,22 @@ private final class ScriptedDetector: DetectSending, @unchecked Sendable {
     }
 }
 
+/// Passes frames to `inner`; holds probes (no frame number) until cancelled.
+private final class SlowProbes: DetectSending, @unchecked Sendable {
+    private let inner: ScriptedDetector
+    private let lock = NSLock()
+    private var _probes = 0
+    init(_ inner: ScriptedDetector) { self.inner = inner }
+    var probesStarted: Int { lock.withLock { _probes } }
+
+    func detect(_ request: DetectRequest) async throws -> DetectResponse {
+        guard request.frame == nil else { return try await inner.detect(request) }
+        lock.withLock { _probes += 1 }
+        try await Task.sleep(nanoseconds: 3_600_000_000_000)
+        return .failure(DetectFailure(status: 0, reason: .failed))
+    }
+}
+
 /// Never answers, until cancelled.
 private struct SilentDetector: DetectSending {
     func detect(_ request: DetectRequest) async throws -> DetectResponse {
@@ -48,10 +64,12 @@ private struct FakeImaging: ClassifierImaging {
     func detectImage(_ frame: PreparedFrame, rotation: Int) -> String? {
         "img-\(frame.tag)-\(rotation)"
     }
-    func keptFrame(_ frame: CameraFrame) -> FileInput? {
+    func keptFrame(_ frame: CameraFrame, window: CaptureWindow?) -> FileInput? {
         .data(Data([0x4B, UInt8(frame.index % 256)]))
     }
-    func sharpness(of photo: FileInput, frameWidth: Int) -> Double? { stillSharpness }
+    func sharpness(of photo: FileInput, frameSize: CGSize, window: CaptureWindow?) -> Double? {
+        stillSharpness
+    }
     func turnedOver(_ photo: FileInput) -> FileInput? {
         guard case .data(let data) = photo else { return nil }
         return .data(data + [0xEE])
@@ -272,6 +290,14 @@ private func run(
     #expect(scanner.verdict(at: clock.now) == .block(.healthCard))
 }
 
+@MainActor @Test func aLicenceInThePassportStepIsNeverLetThrough() async {
+    let clock = ManualClock()
+    let scanner = makeScanner(
+        ScriptedDetector { _, _ in card("gb_dvla_dl", 0.9) }, type: .passport, clock: clock)
+    await run(scanner, clock: clock, frames: 12)
+    #expect(scanner.verdict(at: clock.now) == .hold(.otherDocument(.driversLicence)))
+}
+
 @MainActor @Test func anotherKindOfDocumentIsNamedThenCapturedUntyped() async {
     let clock = ManualClock()
     let scanner = makeScanner(
@@ -311,6 +337,25 @@ private func run(
         bytes(report.photo) == Data([0xFF, 0xD8, 0x01, 0xEE]), "the photo is turned right way up")
     let frames = try #require(report.classification?.frames)
     #expect(frames.contains { $0.decision == FrameDiagnostic.probeDecision })
+}
+
+@MainActor @Test func aSlowProbeNeverHoldsUpTheNextFrame() async {
+    let clock = ManualClock()
+    // Frames don't confirm, so probing starts; a probe then takes as long as the
+    // test lets it.
+    let detector = ScriptedDetector { request, _ in card("us_tx_dl", 0.3) }
+    let slow = SlowProbes(detector)
+    let scanner = makeScanner(slow, clock: clock)
+    for i in 0..<8 {
+        let frame = CameraFrame(index: i, syntheticQuality: good)
+        scanner.observe(frame, quality: good, framed: true, visionReady: true, at: clock.now)
+        for _ in 0..<5 { try? await Task.sleep(nanoseconds: 10_000_000) }
+        clock.now += 0.6
+    }
+    let normal = detector.requests.filter { $0.frame != nil }.count
+    #expect(slow.probesStarted == 1, "one probe at a time")
+    #expect(normal >= 6, "frames kept going while the probe was out (\(normal) sent)")
+    scanner.stop()
 }
 
 @MainActor @Test func whileAProbeBeatsTheFramesTheUserIsAskedToTurnTheCard() async {
@@ -373,14 +418,17 @@ private func run(
 
 @Test func everyClassifierGuidanceHasCopy() {
     #expect(CaptureOverlayView.hintText(for: .identifying) == "Checking your ID…")
-    #expect(CaptureOverlayView.hintText(for: .wrongWay) == "Turn your card the right way up")
+    #expect(
+        CaptureOverlayView.hintText(for: .wrongWay)
+            == "Your card is upside down. Turn it the right way up")
     #expect(
         CaptureOverlayView.hintText(for: .healthCard)
             == "Health cards can't be used. Please use a different ID.")
     #expect(
         CaptureOverlayView.hintText(for: .otherDocument(.idCard))
             == "This looks like an ID card. Is this the right document?")
-    #expect(CaptureOverlayView.hintText(for: .connecting) == "Getting ready…")
+    // Waiting for the first answer reads the same as checking: one stage, not two.
+    #expect(CaptureOverlayView.hintText(for: .connecting) == "Checking your ID…")
 }
 
 @Test func theClassifierCropGrowsTheBoxAndFallsBackToTheMiddle() {

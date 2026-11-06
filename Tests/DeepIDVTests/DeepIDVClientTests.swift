@@ -39,6 +39,9 @@ import Testing
     }
     _ = DeepIDVVerificationView(client: client, igamingSessionID: "sess-1") { _ in }
     _ = DocumentScannerView(client: client, documentType: .idCard) { _ in }
+    _ = DocumentScannerView(client: client, documentType: .idCard, documentCamera: .back) { _ in }
+    _ = DeepIDVVerificationView(client: client, documentCamera: .back) { _ in }
+    _ = DeepIDVWorkflowView(client: client, sessionID: "sess-1", documentCamera: .back) { _ in }
     // Composable liveness: runs against a host-created verification session.
     _ = CustomFaceLivenessView(client: client, sessionID: "sess-1") {
         (_: Result<FaceLivenessResult, DeepIDVError>) in

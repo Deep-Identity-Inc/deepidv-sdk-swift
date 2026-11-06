@@ -62,7 +62,8 @@ private func makeModel(
         evaluator: ScriptedFaceEvaluator(qualities: faces),
         encoder: encoder,
         authorizer: authorizer,
-        tunables: .init(stabilityFrameCount: 4, autoCaptureWarmup: autoCaptureWarmup),
+        tunables: .init(
+            stabilityFrameCount: 4, autoCaptureWarmup: autoCaptureWarmup, capturedDisplay: 0),
         onResult: { resultSpy.result = $0 })
 }
 

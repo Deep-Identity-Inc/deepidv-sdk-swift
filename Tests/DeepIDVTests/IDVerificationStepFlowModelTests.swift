@@ -328,7 +328,9 @@ func failedAttemptRetryRecapturesAndReuploads() async {
                 attemptsRemaining: 1))
 
     model.retry()
-    #expect(model.selectedWireType(for: .primary) == nil)
+    // The only allowed type is picked again without asking.
+    #expect(model.selectedWireType(for: .primary) == "drivers-license")
+    #expect(model.phase == .capturingDocument(slot: .primary, type: .driversLicense, captureMode: .frontAndBack))
     model.selectDocumentType(.driversLicense)
     model.documentCaptured(front: image(4), back: image(5))
     model.selfieCaptured(image(6))
@@ -591,8 +593,9 @@ func failureWithoutATargetedActionRestartsFromTypeSelection() async {
             currentStep: 0,
             attemptsRemaining: 1)
         let spy = IDStepSpy(outcomes: [retryable])
+        // Two types, so there is a choice to go back to (one type skips the picker).
         let model = makeIDModel(
-            requirements: workflowIDRequirements(validTypes: ["drivers-license"]),
+            requirements: workflowIDRequirements(validTypes: ["drivers-license", "passport"]),
             spy: spy)
 
         await runFirstAttempt(model)
@@ -614,4 +617,24 @@ func idStepAlwaysOpensOnTypeSelection() {
 
     #expect(model.phase == .selectingType(index: 0))
     #expect(spy.uploadCalls.isEmpty)
+}
+
+@MainActor @Test
+func oneAllowedTypeSkipsThePicker() {
+    let model = makeIDModel(
+        requirements: workflowIDRequirements(validTypes: ["drivers-license"]),
+        spy: IDStepSpy(outcomes: []))
+    model.start()
+    #expect(
+        model.phase
+            == .capturingDocument(slot: .primary, type: .driversLicense, captureMode: .frontAndBack))
+}
+
+@MainActor @Test
+func severalAllowedTypesStillAsk() {
+    let model = makeIDModel(
+        requirements: workflowIDRequirements(validTypes: ["passport", "drivers-license"]),
+        spy: IDStepSpy(outcomes: []))
+    model.start()
+    #expect(model.phase == .selectingType(index: 0))
 }

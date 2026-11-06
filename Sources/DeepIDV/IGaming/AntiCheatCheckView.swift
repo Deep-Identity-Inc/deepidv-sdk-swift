@@ -85,36 +85,32 @@ struct AntiCheatFlowView: View {
             }
 
         case .checking:
-            statusChrome {
-                ProgressView()
-                Text("Checking your photo…")
-                    .font(theme.typography.body())
-                    .foregroundStyle(theme.colors.grey.s700)
-            }
+            Kit.StatusScreen(
+                badge: .working(symbol: "person.crop.square"), title: L("Checking your photo"),
+                message: L("This only takes a moment"))
 
         case .finished(let result):
-            statusChrome {
-                Text(result.isDuplicate ? "This face is already registered" : "Check complete")
-                    .font(theme.typography.body())
-                    .foregroundStyle(theme.colors.grey.s700)
+            if result.isDuplicate {
+                Kit.StatusScreen(badge: .warning, title: L("This face is already registered"))
+            } else {
+                Kit.StatusScreen(badge: .success, title: L("Check complete"))
             }
 
         case .failed(let error):
-            statusChrome {
-                Text(error.message)
-                    .font(theme.typography.body())
-                    .foregroundStyle(theme.colors.grey.s700)
-                    .multilineTextAlignment(.center)
-                if error.kind == .cameraPermissionDenied {
-                    // Retrying re-arms the same capture surface, which will
-                    // immediately deny again — offer the Settings deep-link
-                    // instead of (or in addition to) "Try again" so the host
-                    // isn't stuck in a loop with no way out.
-                    Button("Open Settings", action: openSettings)
-                        .font(theme.typography.body())
-                }
-                Button("Try again") { model.retry() }
-                    .font(theme.typography.body())
+            // Our own words, never the server's message (see WorkflowFailureCopy).
+            let copy = WorkflowFailureCopy.error(error)
+            if error.kind == .cameraPermissionDenied {
+                // Retrying re-arms the same capture surface, which will
+                // immediately deny again — offer the Settings deep-link first
+                // so the host isn't stuck in a loop with no way out.
+                Kit.StatusScreen(
+                    badge: .camera, title: L("Camera access is off"), message: copy.body,
+                    primary: .init(title: L("Open Settings"), run: openSettings),
+                    secondary: .init(title: L("Try again"), run: model.retry))
+            } else {
+                Kit.StatusScreen(
+                    badge: .warning, title: copy.title, message: copy.body,
+                    primary: .init(title: L("Try again"), run: model.retry))
             }
         }
     }
@@ -124,15 +120,6 @@ struct AntiCheatFlowView: View {
         UIApplication.shared.open(url)
     }
 
-    /// Shared full-screen themed container for the non-capture states.
-    private func statusChrome(@ViewBuilder _ content: () -> some View) -> some View {
-        VStack(spacing: theme.spacing.md) {
-            content()
-        }
-        .padding(theme.spacing.lg)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(theme.colors.grey.s50)
-    }
 }
 
 #Preview {

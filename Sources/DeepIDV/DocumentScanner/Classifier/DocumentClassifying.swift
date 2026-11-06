@@ -48,6 +48,26 @@ protocol DocumentClassifying: AnyObject {
         -> FrontCaptureReport
     /// The capture ended without a photo; stop any work in flight.
     func stop()
+    /// Where the capture frame is drawn on screen; kept frames are cut to it.
+    func windowChanged(_ window: CaptureWindow)
+    /// The document the classifier names for the screen, or `nil`.
+    var shownDocument: ShownDocument? { get }
+}
+
+extension DocumentClassifying {
+    var shownDocument: ShownDocument? { nil }
+    func windowChanged(_ window: CaptureWindow) {}
+}
+
+/// The document the capture screen names while scanning.
+struct ShownDocument: Sendable, Equatable {
+    /// The classifier's class id.
+    var id: String
+    /// Confirmed, or only a first guess.
+    var confirmed: Bool
+
+    /// The name to show: "Ontario Driver's License".
+    var label: String? { DocumentNames.label(of: id) }
 }
 
 /// Whether the classifier works for this session: unknown until its first
@@ -66,7 +86,8 @@ final class ClassifierAvailability {
 
     private(set) var state: State = .unknown
 
-    /// Extra frames are only sent once the server reads them. Off until then.
+    /// Whether extra frames of each card front go with the submission. Like the
+    /// classifier's fields, only once the classifier has answered.
     let sendsExtraFrames: Bool
 
     init(sendsExtraFrames: Bool = false) {

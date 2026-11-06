@@ -5,12 +5,20 @@ import Foundation
 /// Which camera the document-capture step opens.
 @nonexhaustive
 public enum DocumentCamera: String, Sendable, Equatable {
-    /// The rear camera (default) — the user points the device at the document.
+    /// The rear camera — the user points the device at the document.
     case back
-    /// The front camera — for fixed kiosks / stands where the user holds the
+    /// The front camera (default) — for fixed kiosks / stands where the user holds the
     /// document up to the screen. Stills are captured un-mirrored so OCR sees
     /// the document as printed.
     case front
+}
+
+/// The language of the SDK's screens.
+@nonexhaustive
+public enum DeepIDVLanguage: String, Sendable, Equatable, CaseIterable {
+    case english = "en"
+    case spanish = "es"
+    case french = "fr"
 }
 
 /// Configuration for a DeepIDV client.
@@ -27,17 +35,30 @@ public struct DeepIDVConfig: Sendable, Equatable {
     public var initialRetryDelay: TimeInterval
     /// Per-attempt timeout for S3 uploads — separate from `timeout`.
     public var uploadTimeout: TimeInterval
-    /// Camera used by the document-capture views. Defaults to `.back`.
+    /// Camera used by the document-capture views. Defaults to `.front`, for
+    /// kiosks and tablets where the user holds the ID up to the screen; use
+    /// `.back` on a phone pointed at the ID.
     public var documentCamera: DocumentCamera
     /// Whether the document-capture views show the short framing-tips intro
-    /// before opening the camera. Defaults to `true`; kiosks that give their
-    /// own instructions can turn it off to go straight to the viewfinder.
+    /// before opening the camera. Defaults to `false`: the camera screen gives
+    /// its own instructions.
     public var showsDocumentCaptureIntro: Bool
     /// Whether ID card capture in workflow sessions uses deepidv's document
     /// classifier when it's available, to recognise the card, catch one held
     /// upside down and hold off on health cards. Defaults to `true`. With it off,
     /// or when the classifier isn't available, capture uses on-device checks only.
     public var usesDocumentClassifier: Bool
+    /// Whether a workflow run that is submitted ends on a short thank-you
+    /// screen before ``DeepIDVWorkflowView`` reports its result. The screen is
+    /// the same whatever the decision, so it never tells the user whether
+    /// they passed; your app gets the decision in the result. It closes on its
+    /// own after a moment, or with its Done button. Defaults to `true`; turn it
+    /// off to go straight back to your app.
+    public var showsCompletionScreen: Bool
+    /// The language of the SDK's screens. `nil` (the default) follows the
+    /// device: the first of the user's preferred languages the SDK has, or
+    /// English. Set it to match an app with its own language setting.
+    public var language: DeepIDVLanguage?
 
     public init(
         apiKey: String,
@@ -46,9 +67,11 @@ public struct DeepIDVConfig: Sendable, Equatable {
         maxRetries: Int? = nil,
         initialRetryDelay: TimeInterval? = nil,
         uploadTimeout: TimeInterval? = nil,
-        documentCamera: DocumentCamera = .back,
-        showsDocumentCaptureIntro: Bool = true,
-        usesDocumentClassifier: Bool = true
+        documentCamera: DocumentCamera = .front,
+        showsDocumentCaptureIntro: Bool = false,
+        usesDocumentClassifier: Bool = true,
+        showsCompletionScreen: Bool = true,
+        language: DeepIDVLanguage? = nil
     ) {
         self.apiKey = apiKey
         self.baseURL = baseURL ?? Self.defaultBaseURL
@@ -59,6 +82,8 @@ public struct DeepIDVConfig: Sendable, Equatable {
         self.documentCamera = documentCamera
         self.showsDocumentCaptureIntro = showsDocumentCaptureIntro
         self.usesDocumentClassifier = usesDocumentClassifier
+        self.showsCompletionScreen = showsCompletionScreen
+        self.language = language
     }
 }
 

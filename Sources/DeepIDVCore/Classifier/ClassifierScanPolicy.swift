@@ -7,12 +7,20 @@ import Foundation
 ///
 /// Pure and clock-free (the caller passes `now`, in seconds on any monotonic
 /// clock), so the rules are deterministic under test. Ported from the web
-/// capture with the same rules and numbers. Only card fronts are scanned: card
-/// backs and passports never reach the classifier.
+/// capture with the same rules and numbers. Card fronts and passport photo pages
+/// are scanned; card backs never reach the classifier.
+///
+/// The model has no passport class, so a passport page is captured as the web
+/// captures it: once the classifier has seen a good page for
+/// `passportCaptureDelay`, with no hold after. A card the classifier names in
+/// the passport step (a licence or an ID card) is never captured automatically:
+/// the warning shows until it leaves the frame, and the shutter still works.
 package struct ClassifierScanPolicy: Sendable {
     /// A well-framed card the classifier can't type is captured anyway once it has
     /// been good this long (plus `holdDuration`).
     package static let untypedCaptureDelay: TimeInterval = 5
+    /// A passport page is captured once it has been good this long, with no hold.
+    package static let passportCaptureDelay: TimeInterval = 1.5
     /// How long a capture is held, with the card staying good and the same type
     /// leading, before the photo is taken.
     package static let holdDuration: TimeInterval = 1.2
@@ -25,6 +33,8 @@ package struct ClassifierScanPolicy: Sendable {
         case typed
         case voted
         case untyped
+        /// A passport page, good for `passportCaptureDelay`.
+        case passport
     }
 
     /// A capture waiting out `holdDuration`: for which type (`nil` when untyped),
@@ -58,6 +68,9 @@ package struct ClassifierScanPolicy: Sendable {
         package var doc: ShownDoc?
         /// The capture being held, or `nil`.
         package var hold: Hold?
+        /// A card the classifier named in the passport step: auto-capture stays
+        /// off until the card leaves the frame.
+        package var cardInPassport: Mismatch?
     }
 
     /// What the guidance shows for one answer.
@@ -107,6 +120,9 @@ package struct ClassifierScanPolicy: Sendable {
         package var votes: [VoteEntry] = []
         /// The card looks upside down: no hold and no capture until that clears.
         package var wrongWay = false
+
+        /// A passport page is being scanned.
+        package var passport: Bool { picked == .passport }
     }
 
     // MARK: Running the scan
@@ -209,7 +225,9 @@ package struct ClassifierScanPolicy: Sendable {
 
     /// The photo is due: a hold has lasted `holdDuration`.
     package static func holdDue(_ state: State, now: TimeInterval) -> CaptureReason? {
-        guard let hold = state.hold, reached(now - hold.since, holdDuration) else { return nil }
+        guard let hold = state.hold else { return nil }
+        if hold.reason == .passport { return .passport }
+        guard reached(now - hold.since, holdDuration) else { return nil }
         return hold.reason
     }
 
@@ -218,6 +236,19 @@ package struct ClassifierScanPolicy: Sendable {
         _ previous: State, decision: ScanDecision, outcome: DetectOutcome, context: Context
     ) -> Step {
         var step = stepOf(previous, decision: decision, outcome: outcome, context: context)
+        if context.passport, decision.key != .noID {
+            step.state.cardInPassport = step.state.cardInPassport ?? previous.cardInPassport
+        }
+        if let card = step.state.cardInPassport {
+            // A card held up for a passport: warn, and never photograph it automatically.
+            step.state.hold = nil
+            step.state.goodSince = nil
+            step.capture = nil
+            if step.shown != .error { step.shown = .mismatch }
+            step.mismatch = card
+            step.chip = nil
+            return step
+        }
         // A card that looks upside down would be photographed upside down: wait.
         let hold = context.wrongWay ? nil : nextHold(previous.hold, step: step, context: context)
         step.state.hold = hold
@@ -337,6 +368,13 @@ package struct ClassifierScanPolicy: Sendable {
                 let mismatch =
                     DocumentClassCatalog.isIDCardLicenceMixup(docID, picked: picked)
                     ? nil : Mismatch(id: docID, group: seen)
+                if context.passport, let mismatch {
+                    var step = base(State(failures: 0, goodSince: nil, doc: nil), .mismatch)
+                    step.mismatch = mismatch
+                    step.chip = nil
+                    step.state.cardInPassport = mismatch
+                    return step
+                }
                 return untypedStep(
                     previous, decision: decision, context: context, goodSince: goodSince,
                     doc: nil, mismatch: mismatch)
@@ -353,7 +391,8 @@ package struct ClassifierScanPolicy: Sendable {
     }
 
     /// A good card with no type to capture by: captured once it has been good for
-    /// `untypedCaptureDelay`, unless a health card holds it.
+    /// `untypedCaptureDelay` (a passport page: `passportCaptureDelay`), unless a
+    /// health card holds it.
     private static func untypedStep(
         _ previous: State, decision: ScanDecision, context: Context, goodSince: TimeInterval,
         doc: ShownDoc?, mismatch: Mismatch?
@@ -365,8 +404,9 @@ package struct ClassifierScanPolicy: Sendable {
         }
         var step = base(state, mismatch == nil ? .identifying : .mismatch)
         let healthHold = context.health == .strict && healthLeads(context.votes)
-        let ready = !healthHold && reached(context.now - goodSince, untypedCaptureDelay)
-        step.capture = ready ? .untyped : nil
+        let delay = context.passport ? passportCaptureDelay : untypedCaptureDelay
+        let ready = !healthHold && reached(context.now - goodSince, delay)
+        step.capture = ready ? (context.passport ? .passport : .untyped) : nil
         step.mismatch = mismatch
         if step.chip == nil, mismatch == nil, let id = decision.doc?.id {
             step.chip = Chip(

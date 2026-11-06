@@ -14,12 +14,13 @@ protocol DetectSending: Sendable {
 extension DetectClient: DetectSending {}
 
 /// Runs the document classifier alongside the on-device checks for one card
-/// front.
+/// front or passport photo page.
 ///
 /// The capture model offers it every frame. At most one call is in flight, at
 /// least half a second apart, with backoff after failures. Each answer steps the
-/// scan rules (`ClassifierScanPolicy`) and the upside-down check
-/// (`WrongWayDetector`). Meanwhile a few recent frames are kept as candidates for
+/// scan rules (`ClassifierScanPolicy`) and, on a card, the upside-down check
+/// (`WrongWayDetector`). The model has no passport class, so a passport page is
+/// never probed upside down: it is captured once good and steady. Meanwhile a few recent frames are kept as candidates for
 /// the photo.
 ///
 /// It can only ever hold capture back for a while, never block it: it switches
@@ -48,6 +49,9 @@ final class DocumentClassifierScanner: DocumentClassifying {
     private(set) var rotation = 0
     private var frameNumber = 0
     private var call: Task<Void, Never>?
+    /// The wrong-way probe in flight. It runs beside the normal calls, so
+    /// checking for an upside-down card never holds up reading a right-way one.
+    private var probeCall: Task<Void, Never>?
     private var nextCallAt: TimeInterval = 0
     private var failedOver = false
     private var gaveUpWaiting = false
@@ -58,10 +62,13 @@ final class DocumentClassifierScanner: DocumentClassifying {
     /// The latest confirmed type the sticky document still agrees with.
     private var confirmed: ClassifierScanPolicy.Confirmed?
     private var ring: [BufferedFrame<FileInput>] = []
+    /// The capture frame on screen, which kept frames are cut to.
+    private var window: CaptureWindow?
     private var keeping: [Int: Task<Void, Never>] = [:]
     private var keepCount = 0
     private var lastKeptAt: TimeInterval?
-    private var frameWidth: Int?
+    /// The size of the video frames, which the photo is scored against.
+    private var frameSize: CGSize?
 
     init(
         documentType: DocumentType,
@@ -141,9 +148,10 @@ final class DocumentClassifierScanner: DocumentClassifying {
         var spares = picked.extras.map(\.frame)
         if let best = picked.main {
             let imaging = self.imaging
-            let frameWidth = self.frameWidth ?? 0
+            let frameSize = self.frameSize ?? .zero
+            let window = self.window
             let stillSharpness = await Task.detached {
-                imaging.sharpness(of: photo, frameWidth: frameWidth)
+                imaging.sharpness(of: photo, frameSize: frameSize, window: window)
             }.value
             if CaptureFramePicker.prefersKeptFrame(
                 stillSharpness: stillSharpness, keptSharpness: best.sharpness)
@@ -168,17 +176,29 @@ final class DocumentClassifierScanner: DocumentClassifying {
         return FrontCaptureReport(photo: main, classification: classification, extraFrames: extras)
     }
 
+    var shownDocument: ShownDocument? {
+        guard isActive, let chip = lastStep?.chip else { return nil }
+        return ShownDocument(id: chip.doc.id, confirmed: !chip.pending)
+    }
+
+    func windowChanged(_ window: CaptureWindow) {
+        self.window = window
+    }
+
     func stop() {
         stopped = true
         call?.cancel()
         call = nil
+        probeCall?.cancel()
+        probeCall = nil
     }
 
     /// Waits for the call and the frame copies in flight. For tests.
     func settle() async {
-        while let task = call ?? keeping.values.first {
+        while let task = call ?? probeCall ?? keeping.values.first {
             await task.value
             if call == task { call = nil }
+            if probeCall == task { probeCall = nil }
             keeping = keeping.filter { $0.value != task }
         }
     }
@@ -210,9 +230,17 @@ final class DocumentClassifierScanner: DocumentClassifying {
             guard let response = try? await self.detector.detect(request), !Task.isCancelled,
                 self.isActive
             else { return }
+            // A probe turned the scan while this frame was out: its answer is for
+            // the old way round, so it says nothing now.
+            guard self.rotation == rotation else {
+                self.call = nil
+                return
+            }
             self.handle(response, quality: quality, frameGood: frameGood, startedAt: startedAt)
-            if self.isActive, self.wrongWay.probeDue(at: self.clock()) {
-                await self.probe(prepared)
+            if self.isActive, self.picked != .passport, self.probeCall == nil,
+                self.wrongWay.probeDue(at: self.clock())
+            {
+                self.startProbe(prepared)
             }
             if !Task.isCancelled { self.call = nil }
         }
@@ -254,7 +282,15 @@ final class DocumentClassifierScanner: DocumentClassifying {
     }
 
     /// Sends the same frame turned the other way, to catch a card held upside down.
+    private func startProbe(_ prepared: PreparedFrame) {
+        probeCall = Task { [weak self] in
+            await self?.probe(prepared)
+            if !Task.isCancelled { self?.probeCall = nil }
+        }
+    }
+
     private func probe(_ prepared: PreparedFrame) async {
+        let sentRotation = rotation
         let turned = (rotation + 180) % 360
         let imaging = self.imaging
         let image: String? = await Task.detached {
@@ -263,12 +299,13 @@ final class DocumentClassifierScanner: DocumentClassifying {
         guard let image,
             let response = try? await detector.detect(
                 DetectRequest(imageB64: image, scanID: scanID, method: method)),
-            !Task.isCancelled, isActive
+            !Task.isCancelled, isActive, rotation == sentRotation
         else { return }
         availability.record(response)
         let now = clock()
         pacing.record(response)
-        nextCallAt = max(nextCallAt, now + pacing.wait(afterCallTaking: 0))
+        // Only a backoff (a rate limit, a failing gateway) slows the normal calls.
+        if pacing.backoff > 0 { nextCallAt = max(nextCallAt, now + pacing.backoff) }
         wrongWay.recordProbe(response.outcome, at: now)
         frames.addProbe(response.outcome, at: now, rotation: turned)
         if wrongWay.flip {
@@ -297,13 +334,17 @@ final class DocumentClassifierScanner: DocumentClassifying {
         guard quality.documentDetected else { return }
         if let lastKeptAt, now - lastKeptAt < CaptureFramePicker.interval - 1e-9 { return }
         lastKeptAt = now
-        if let pixelBuffer = frame.pixelBuffer { frameWidth = CVPixelBufferGetWidth(pixelBuffer) }
+        if let pixelBuffer = frame.pixelBuffer {
+            frameSize = CGSize(
+                width: CVPixelBufferGetWidth(pixelBuffer), height: CVPixelBufferGetHeight(pixelBuffer))
+        }
         let imaging = self.imaging
+        let window = self.window
         let sharpness = quality.sharpness
         keepCount += 1
         let id = keepCount
         keeping[id] = Task { [weak self] in
-            let kept = await Task.detached { imaging.keptFrame(frame) }.value
+            let kept = await Task.detached { imaging.keptFrame(frame, window: window) }.value
             guard let self else { return }
             self.keeping[id] = nil
             guard let kept, !self.stopped else { return }

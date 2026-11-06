@@ -57,6 +57,8 @@ struct WorkflowStepOutcome: Sendable, Equatable {
             || sessionStatus == .failed
             || sessionStatus == .completed
             || sessionStatus == .expired
+            || sessionStatus == .verified
+            || sessionStatus == .rejected
     }
 
     var canRetry: Bool {
