@@ -11,10 +11,10 @@ import Foundation
 /// SDK never creates sessions — the host app (or its backend) mints one via
 /// `POST /v1/sessions` against a workflow with the corresponding steps.
 ///
-/// `public` so `DeepIDVClient` can construct it; the initializer is `package`,
-/// so external clients reach these only through the `checkAntiCheat` /
-/// `checkVPN` / `checkIPJurisdiction` client methods.
-public struct IGamingService: Sendable {
+/// `package` so `DeepIDVClient` can use it while apps can't see it: they reach
+/// these only through the `checkAntiCheat` / `checkVPN` /
+/// `checkIPJurisdiction` client methods.
+package struct IGamingService: Sendable {
     private let client: APIClient
 
     /// The API's JSON body limit is 5 MB (`bodyParser.json({limit: "5mb"})`);
@@ -58,7 +58,7 @@ public struct IGamingService: Sendable {
     /// step, and server errors. The only hard failure is 404 → `.notFound`
     /// (missing **or** cross-org session — indistinguishable by design).
     /// `action == .block` means the server already marked the session FAILED.
-    public func checkAntiCheat(
+    package func checkAntiCheat(
         sessionID: String,
         image: FileInput,
         deviceFingerprint: String? = nil
@@ -78,7 +78,7 @@ public struct IGamingService: Sendable {
     /// The caller supplies `ipAddress` — the endpoint takes it in the body
     /// rather than deriving it from the request. A workflow without the step
     /// short-circuits to `{verdict: UNAVAILABLE, action: allow}` (success).
-    public func checkVPN(sessionID: String, ipAddress: String) async throws -> IPCheckResult {
+    package func checkVPN(sessionID: String, ipAddress: String) async throws -> IPCheckResult {
         try await client.post(
             "/v1/igaming/vpn-detection",
             body: IPCheckRequest(sessionId: sessionID, ipAddress: ipAddress))
@@ -87,7 +87,7 @@ public struct IGamingService: Sendable {
     /// Resolves the IP to a jurisdiction and evaluates it against the
     /// session's `ip-jurisdiction` workflow step. Same request/response
     /// contract and short-circuit behavior as ``checkVPN(sessionID:ipAddress:)``.
-    public func checkIPJurisdiction(
+    package func checkIPJurisdiction(
         sessionID: String, ipAddress: String
     ) async throws -> IPCheckResult {
         try await client.post(

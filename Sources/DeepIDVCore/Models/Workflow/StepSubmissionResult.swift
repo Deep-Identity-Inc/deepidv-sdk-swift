@@ -6,22 +6,22 @@ import Foundation
 /// Envelope keys decode from the top-level container; ``payload`` decodes from
 /// the **same** decoder — the server spreads step-specific keys (e.g. `"liveness"`)
 /// at the top level rather than nesting them under a `payload` key.
-public struct StepSubmissionResult<Payload: Decodable & Sendable & Equatable>:
+package struct StepSubmissionResult<Payload: Decodable & Sendable & Equatable>:
     Sendable, Equatable, Decodable
 {
-    public let stepID: WorkflowStepID
-    public let stepStatus: WorkflowStepStatus
+    package let stepID: WorkflowStepID
+    package let stepStatus: WorkflowStepStatus
     /// Why this attempt failed a check; `nil` when it passed.
-    public let failure: WorkflowFailure?
+    package let failure: WorkflowFailure?
     /// Why the run ended, when this submission ended it without success.
-    public let sessionFailure: WorkflowSessionFailure?
+    package let sessionFailure: WorkflowSessionFailure?
     /// Post-submission current step index; `nil` when the run is finished.
-    public let currentStep: Int?
+    package let currentStep: Int?
     /// Session-wide attempts remaining; `nil` = unlimited (WR-15).
-    public let attemptsRemaining: Int?
-    public let sessionStatus: SessionStatus
-    public let sessionProgress: SessionProgress
-    public let payload: Payload
+    package let attemptsRemaining: Int?
+    package let sessionStatus: SessionStatus
+    package let sessionProgress: SessionProgress
+    package let payload: Payload
 
     enum CodingKeys: String, CodingKey {
         case stepID = "step_id"
@@ -34,7 +34,7 @@ public struct StepSubmissionResult<Payload: Decodable & Sendable & Equatable>:
         case sessionProgress = "session_progress"
     }
 
-    public init(
+    package init(
         stepID: WorkflowStepID,
         stepStatus: WorkflowStepStatus,
         failure: WorkflowFailure?,
@@ -56,7 +56,7 @@ public struct StepSubmissionResult<Payload: Decodable & Sendable & Equatable>:
         self.payload = payload
     }
 
-    public init(from decoder: Decoder) throws {
+    package init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.stepID = try container.decode(WorkflowStepID.self, forKey: .stepID)
         self.stepStatus = try container.decode(WorkflowStepStatus.self, forKey: .stepStatus)
@@ -73,6 +73,6 @@ public struct StepSubmissionResult<Payload: Decodable & Sendable & Equatable>:
 }
 
 /// Empty payload for `ID_VERIFICATION` submissions (no step-specific keys).
-public struct EmptyStepPayload: Sendable, Equatable, Decodable {
-    public init() {}
+package struct EmptyStepPayload: Sendable, Equatable, Decodable {
+    package init() {}
 }

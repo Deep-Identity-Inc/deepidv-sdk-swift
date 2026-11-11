@@ -5,7 +5,7 @@ import Foundation
 /// The four methods the custom liveness flow needs from its backend. Exists as a
 /// protocol so the UI-layer model can be unit-tested against a stub without a
 /// live transport.
-public protocol CustomFaceLivenessServicing: Sendable {
+package protocol CustomFaceLivenessServicing: Sendable {
     func createSession(sessionID: String) async throws -> CustomLivenessSession
     func requestUploadURLs(sessionID: String, frameCount: Int, clipMimeType: String?) async throws
         -> LivenessUploadURLs
@@ -24,7 +24,7 @@ public protocol CustomFaceLivenessServicing: Sendable {
 /// every non-upload call here decodes `Envelope { liveness: T }` and returns
 /// `.liveness`. `complete` returns a server-computed `passed`, decoded directly
 /// into ``FaceLivenessResult`` with no client-side recompute.
-public struct CustomFaceLivenessService: CustomFaceLivenessServicing {
+package struct CustomFaceLivenessService: CustomFaceLivenessServicing {
     private let client: APIClient
     private let uploader: LivenessFrameUploader
 
@@ -41,7 +41,7 @@ public struct CustomFaceLivenessService: CustomFaceLivenessServicing {
         "/v1/sessions/\(sessionID)/steps/face-liveness"
     }
 
-    public func createSession(sessionID: String) async throws -> CustomLivenessSession {
+    package func createSession(sessionID: String) async throws -> CustomLivenessSession {
         struct Body: Encodable { let action: String }
         /// `script` is optional so a start without one is a clear error rather
         /// than "failed to decode response body".
@@ -65,7 +65,7 @@ public struct CustomFaceLivenessService: CustomFaceLivenessServicing {
             livenessSessionID: env.liveness.livenessSessionID, script: script)
     }
 
-    public func requestUploadURLs(
+    package func requestUploadURLs(
         sessionID: String, frameCount: Int, clipMimeType: String? = nil
     ) async throws -> LivenessUploadURLs {
         struct Body: Encodable {
@@ -80,13 +80,13 @@ public struct CustomFaceLivenessService: CustomFaceLivenessServicing {
         return env.liveness
     }
 
-    public func uploadFrames(
+    package func uploadFrames(
         _ frames: [Data], timeline: Data, clip: Data? = nil, to urls: LivenessUploadURLs
     ) async throws {
         try await uploader.upload(frames, timeline: timeline, clip: clip, to: urls)
     }
 
-    public func fetchResult(sessionID: String) async throws -> FaceLivenessResult {
+    package func fetchResult(sessionID: String) async throws -> FaceLivenessResult {
         struct Body: Encodable { let action: String }
         struct Envelope: Decodable { let liveness: FaceLivenessResult }
         let env: Envelope = try await client.post(

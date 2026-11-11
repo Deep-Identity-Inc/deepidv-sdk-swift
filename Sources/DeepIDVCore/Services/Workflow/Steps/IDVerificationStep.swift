@@ -15,7 +15,7 @@ package enum IDVerificationStep: WorkflowStepDefinition {
 
 extension WorkflowService {
     /// Submits an `ID_VERIFICATION` step with document types and opaque upload keys.
-    public func submitIDVerification(
+    package func submitIDVerification(
         sessionID: String,
         submission: IDVerificationSubmission
     ) async throws -> StepSubmissionResult<EmptyStepPayload> {
