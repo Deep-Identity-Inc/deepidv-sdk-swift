@@ -15,6 +15,9 @@ native **face-liveness** check — all with only an `x-api-key`.
   jurisdiction.
 - **No third-party dependencies** — Apple frameworks only.
 
+**Documentation:** guides, every screen and state, and the full reference are
+at [docs.deepidv.com/integrate/sdks/ios](https://docs.deepidv.com/integrate/sdks/ios/overview).
+
 ## Requirements
 
 - iOS 15+
