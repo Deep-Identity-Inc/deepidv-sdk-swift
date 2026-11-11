@@ -241,8 +241,9 @@ public struct DeepIDVClient: Sendable {
     /// including the view being dismissed before an outcome
     /// (``DeepIDVError/Kind/cancelled``), arrive as `.failure`. The view renders
     /// nothing once `onResult` fires — dismiss it and show your own result
-    /// screen. It has no cancel control of its own. UIKit hosts can present it
-    /// with `UIHostingController`.
+    /// screen. Its close button, shown while it gets ready and during the face
+    /// check, ends it with ``DeepIDVError/Kind/cancelled``. UIKit hosts can
+    /// present it with `UIHostingController`.
     ///
     /// - Parameters:
     ///   - workflowID: The workflow the applicant was verified under.
@@ -269,9 +270,9 @@ public struct DeepIDVClient: Sendable {
     /// camera + UI, and the SDK uploads it and returns the server's verdict — no
     /// SDK chrome. Pair with ``faceProbe(_:)`` to time the capture.
     ///
-    /// `sessionID` references an existing verification session created via
-    /// `POST /v1/sessions` (by your backend — the SDK never creates sessions)
-    /// against a workflow with a `face-liveness` step. The step's server-side
+    /// `sessionID` references a workflow session whose current step is face
+    /// liveness, usually created by your backend with
+    /// `POST /v1/workflows/{workflow_id}/sessions`. The step's server-side
     /// config owns both the challenge type and the pass threshold — this call
     /// sends neither; if the step turns out to be configured for the flashing
     /// -light challenge, it throws `.validation` (headless movement can't run

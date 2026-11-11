@@ -37,7 +37,7 @@ Or add it to a `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/Deep-Identity-Inc/deepidv-sdk-swift", from: "1.0.0"),
+    .package(url: "https://github.com/Deep-Identity-Inc/deepidv-sdk-swift", from: "1.3.0"),
 ],
 targets: [
     .target(
@@ -54,7 +54,8 @@ Release notes for every version are in [CHANGELOG.md](CHANGELOG.md).
 ## Quick start
 
 Configure a client with your `x-api-key`, then call one of the headless methods.
-They take already-captured images — no camera involved.
+They take already-captured images — no camera involved. In an app you ship,
+don't embed the key: see [Proxying through your backend](#proxying-through-your-backend).
 
 ```swift
 import DeepIDV
@@ -106,6 +107,7 @@ let config = DeepIDVConfig(
     uploadTimeout: 120,      // upload per-attempt seconds
     documentCamera: .front,   // the default; .back on a phone pointed at the ID
     showsDocumentCaptureIntro: false,  // the default; true shows a framing-tips intro before the camera
+    usesDocumentClassifier: true,      // the default; document recognition during workflow ID capture
     showsCompletionScreen: true,       // the default; false skips the closing thank-you screen
     language: nil                      // the default follows the device; or .english, .spanish, .french
 )
@@ -364,8 +366,9 @@ callback:
 
 - **`DocumentTypePicker(onSelect:)`** — the document-type selection step
   (Passport / ID card / Driver's license).
-- **`DocumentScannerView(client:documentType:onResult:)`** — guided document
-  capture and OCR → `DocumentScanResult`.
+- **`DocumentScannerView(client:documentType:documentCamera:onResult:)`** —
+  guided document capture and OCR → `DocumentScanResult`. `documentCamera`
+  (optional) overrides `DeepIDVConfig.documentCamera` for this view.
 - **`SelfieCaptureView(onResult:)`** — a front-camera selfie capture that
   returns the captured `FileInput` for you to pass to `verifyIdentity`.
 - **`CustomFaceLivenessView(client:sessionID:onResult:)`** — the face-liveness
@@ -373,8 +376,9 @@ callback:
 - **`AntiCheatCheckView(client:sessionID:deviceFingerprint:onResult:)`** — face
   capture plus the iGaming anti-cheat check (see [iGaming checks](#igaming-checks)).
 
-Document capture is automatic; if it can't lock within a few seconds (glare, low
-light, motion) a **manual shutter** appears so the user is never stuck. Two-sided
+Document capture is automatic; if it hasn't fired 8 seconds after a document
+comes into view (15 seconds into a side at the latest) — glare, low light,
+motion — a **manual shutter** appears so the user is never stuck. Two-sided
 documents are captured front then back; passports are front-only.
 
 ### UIKit interop
@@ -628,9 +632,41 @@ key is never logged or serialized.
 
 ## Theming
 
-SDK views use the deepidv brand — colors, typography, and an 8-point spacing
-scale — supplied through the SwiftUI environment. Custom theming isn't
-supported yet. Brand fonts aren't bundled, so text renders in the system font.
+Style the SDK's screens with your brand by applying `.deepIDVAppearance(_:)` to
+any SDK view; it reaches every screen that view shows:
+
+```swift
+DeepIDVWorkflowView(client: client, sessionID: sessionID) { result in /* … */ }
+    .deepIDVAppearance(DeepIDVAppearance(
+        accentColor: .indigo,
+        fontFamily: "Avenir Next",   // must be registered by your app (UIAppFonts)
+        cornerRadius: 8
+    ))
+```
+
+Every option is optional: `accentColor`, `successColor`, `warningColor`,
+`errorColor`, `fontFamily`, `headingFontFamily`, `cornerRadius` and
+`colorScheme`. Text on a color you set turns black or white, whichever reads.
+The camera screens are always dark, and the document frame keeps its ID-card
+shape.
+
+## Languages
+
+The screens are in English, Spanish and French. By default they follow the
+device (the first of the user's preferred languages the SDK has, or English),
+even when your app lists only English. Set `DeepIDVConfig.language`
+(`.english`, `.spanish`, `.french`) to match an app with its own language
+setting. The language applies to the whole app: the client created last wins.
+
+## Proxying through your backend
+
+Don't ship your deepidv API key in the app. Point `baseURL` at your own
+backend and pass your app's own user token as `apiKey`; the SDK sends it as
+`x-api-key` and appends paths such as `/v1/sessions/{id}/workflow` to
+`baseURL`. Your backend checks the user, adds your deepidv key and forwards
+the request. Uploads go straight to presigned URLs. Forward
+`POST /v1/sessions/{id}/id-capture/detect` too, or document recognition turns
+itself off and capture falls back to on-device checks.
 
 ## Development
 

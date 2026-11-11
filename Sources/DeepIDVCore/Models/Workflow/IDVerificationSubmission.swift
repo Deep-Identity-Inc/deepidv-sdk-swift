@@ -6,7 +6,7 @@ import Foundation
 /// `POST /v1/sessions/{session_id}/uploads` and echoed as keys in an
 /// `ID_VERIFICATION` submission's `uploads` object.
 @nonexhaustive
-public enum SessionUploadSlot: String, Sendable, CaseIterable, Codable, Hashable {
+package enum SessionUploadSlot: String, Sendable, CaseIterable, Codable, Hashable {
     case idFront = "id_front"
     case idBack = "id_back"
     case secondaryIDFront = "secondary_id_front"
@@ -19,14 +19,14 @@ public enum SessionUploadSlot: String, Sendable, CaseIterable, Codable, Hashable
 /// Request body for `ID_VERIFICATION` step submission. `uploads` maps each
 /// slot to an opaque `file_key` from the session uploader — echoed back
 /// verbatim, never reconstructed.
-public struct IDVerificationSubmission: Sendable, Equatable, Encodable {
-    public let documentType: String
+package struct IDVerificationSubmission: Sendable, Equatable, Encodable {
+    package let documentType: String
     /// Required by the server iff `require_secondary_id`.
-    public let secondaryDocumentType: String?
+    package let secondaryDocumentType: String?
     /// Required by the server iff `require_tertiary_id`.
-    public let tertiaryDocumentType: String?
+    package let tertiaryDocumentType: String?
     /// Slot → opaque `file_key`, encoded as a string-keyed JSON object.
-    public let uploads: [SessionUploadSlot: String]
+    package let uploads: [SessionUploadSlot: String]
     /// What the document classifier confirmed for each tier's front. Internal and
     /// sent only when set, so a submission without it encodes exactly as before.
     package internal(set) var captureClassification: CaptureClassificationPayload?
@@ -42,7 +42,7 @@ public struct IDVerificationSubmission: Sendable, Equatable, Encodable {
         case extraFrameUploads = "extra_frame_uploads"
     }
 
-    public init(
+    package init(
         documentType: String,
         secondaryDocumentType: String? = nil,
         tertiaryDocumentType: String? = nil,
@@ -54,7 +54,7 @@ public struct IDVerificationSubmission: Sendable, Equatable, Encodable {
         self.uploads = uploads
     }
 
-    public func encode(to encoder: Encoder) throws {
+    package func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(documentType, forKey: .documentType)
         try container.encodeIfPresent(secondaryDocumentType, forKey: .secondaryDocumentType)

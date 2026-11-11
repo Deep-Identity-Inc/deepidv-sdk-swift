@@ -335,15 +335,15 @@ enum Kit {
         var onCamera = false
 
         var body: some View {
-            HStack(spacing: 6) {
-                Image(systemName: "lock.fill").font(.system(size: 12, weight: .semibold))
-                Text(CaptureCopy.encryption)
-                    .font(theme.typography.body(size: 13).weight(.medium))
-            }
-            .foregroundStyle(
-                onCamera
-                    ? theme.colors.grey.s50.opacity(0.78) : Palette(theme, scheme).secondaryText)
-            .accessibilityElement(children: .combine)
+            // One run of text, so the lock wraps with the first word instead of
+            // being left on its own line by a wide font or a long translation.
+            (Text(Image(systemName: "lock.fill")) + Text(" ") + Text(CaptureCopy.encryption))
+                .font(theme.typography.body(size: 13).weight(.medium))
+                .multilineTextAlignment(.center)
+                .foregroundStyle(
+                    onCamera
+                        ? theme.colors.grey.s50.opacity(0.78) : Palette(theme, scheme).secondaryText)
+                .accessibilityLabel(CaptureCopy.encryption)
         }
     }
 }

@@ -9,7 +9,7 @@ import QuartzCore     // CACurrentMediaTime
 /// integrators own the camera, so they feed this recorder the same
 /// `CVPixelBuffer`s they hand to ``DeepIDVClient/faceProbe(_:)``, then pass the
 /// finished bytes to
-/// ``DeepIDVClient/checkMovementLiveness(frames:clip:confidenceThreshold:)``.
+/// ``DeepIDVClient/checkMovementLiveness(sessionID:frames:clip:)``.
 /// The heavy lifting — frame copy, H.264 encode, gap-capped real-time playback —
 /// is the SDK's; the integrator's job is one `append` per frame plus `finish`.
 ///

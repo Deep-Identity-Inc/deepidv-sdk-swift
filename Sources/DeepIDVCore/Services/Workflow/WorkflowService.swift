@@ -5,9 +5,9 @@ import Foundation
 /// Headless orchestration for workflow session lifecycle (create + state).
 ///
 /// Typed step operations live as extensions on this type in each step's
-/// definition file. `public` so ``DeepIDVClient`` can construct it; the
-/// initializer is `package`, so external clients never build it directly.
-public struct WorkflowService: Sendable {
+/// definition file. `package` so ``DeepIDVClient`` can use it while apps can't
+/// see it: they use the client's session methods and the workflow view.
+package struct WorkflowService: Sendable {
     private let client: APIClient
     /// Shared step-submit path + envelope decode used by step extensions.
     let steps: WorkflowStepClient
@@ -34,7 +34,7 @@ public struct WorkflowService: Sendable {
     ///
     /// `POST /v1/workflows/{workflow_id}/sessions` with the end-user identity
     /// fields and optional `expires_in_hours`.
-    public func createSession(
+    package func createSession(
         workflowID: String,
         user: WorkflowUser,
         expiresInHours: Int? = nil
@@ -47,7 +47,7 @@ public struct WorkflowService: Sendable {
     /// Fetches the current execution state for a session.
     ///
     /// `GET /v1/sessions/{session_id}/workflow` — read-only and safe to poll.
-    public func fetchState(sessionID: String) async throws -> WorkflowExecutionState {
+    package func fetchState(sessionID: String) async throws -> WorkflowExecutionState {
         try await client.get("/v1/sessions/\(sessionID)/workflow")
     }
 
@@ -59,7 +59,7 @@ public struct WorkflowService: Sendable {
     /// (409 otherwise) and writes nothing, so it stays repeatable until the
     /// first step submission. The 200 body is the same execution-state
     /// envelope as ``fetchState(sessionID:)``.
-    public func startRun(sessionID: String) async throws -> WorkflowExecutionState {
+    package func startRun(sessionID: String) async throws -> WorkflowExecutionState {
         try await client.post("/v1/sessions/\(sessionID)/workflow/start", body: EmptyBody())
     }
 
@@ -78,7 +78,7 @@ public struct WorkflowService: Sendable {
     /// ``DeepIDVError/apiCode`` set to ``APIErrorCode/sessionTerminal``. A session
     /// that was not created as a headless workflow session throws
     /// ``DeepIDVError/Kind/notFound``.
-    public func resumeRun(sessionID: String) async throws -> WorkflowExecutionState {
+    package func resumeRun(sessionID: String) async throws -> WorkflowExecutionState {
         let state = try await fetchState(sessionID: sessionID)
         guard !state.isTerminal else { throw DeepIDVError.sessionTerminal() }
         return state

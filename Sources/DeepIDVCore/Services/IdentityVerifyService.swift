@@ -11,9 +11,9 @@ import Foundation
 /// presentation. No camera here — it takes already-captured ``FileInput``s, so it
 /// is fully exercisable through the transport stub.
 ///
-/// `public` so `DeepIDVClient` can construct it; the initializer is `package`, so
-/// external clients reach this only through `client.verifyIdentity(...)`.
-public struct IdentityVerifyService: Sendable {
+/// `package` so `DeepIDVClient` can use it while apps can't see it: they reach
+/// this only through `client.verifyIdentity(...)`.
+package struct IdentityVerifyService: Sendable {
     private let client: APIClient
     private let uploader: FileUploader
 
@@ -46,7 +46,7 @@ public struct IdentityVerifyService: Sendable {
     /// document front and the selfie are sent. Input problems surface as
     /// `.validation` from the uploader before any network I/O; endpoint failures
     /// propagate as the mapped `DeepIDVError`.
-    public func verify(
+    package func verify(
         documentFront: FileInput,
         documentBack: FileInput? = nil,
         selfie: FileInput,

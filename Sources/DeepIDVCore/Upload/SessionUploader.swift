@@ -7,7 +7,7 @@ import Foundation
 ///
 /// Dictionary input makes duplicate slots unreachable client-side. `file_key` is
 /// opaque — echoed back verbatim at step submit, never reconstructed.
-public struct SessionUploader: Sendable {
+package struct SessionUploader: Sendable {
     private let client: APIClient
     private let putClient: PresignedPutClient
 
@@ -30,7 +30,7 @@ public struct SessionUploader: Sendable {
     /// Presigns via `POST /v1/sessions/{id}/uploads`, PUTs all files in parallel,
     /// and returns each slot's opaque `file_key`. Content type is detected from
     /// magic bytes; `file_name` is derived as `"{slot}.{ext}"`.
-    public func upload(
+    package func upload(
         sessionID: String, files: [SessionUploadSlot: FileInput]
     ) async throws -> [SessionUploadSlot: String] {
         try await upload(sessionID: sessionID, files: files, uploadType: \.rawValue)

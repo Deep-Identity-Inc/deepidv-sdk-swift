@@ -11,10 +11,9 @@ import Foundation
 /// transport stub. The SwiftUI capture views drive the camera
 /// and hand their frames to this layer.
 ///
-/// `public` so the `DeepIDV` umbrella's `DeepIDVClient` can construct it, but the
-/// initializer is `package`, so it stays unconstructable by external clients —
-/// they reach this only through `client.scanDocument(...)`.
-public struct DocumentScanService: Sendable {
+/// `package` so the `DeepIDV` module's `DeepIDVClient` can use it while apps
+/// can't see it: they reach this only through `client.scanDocument(...)`.
+package struct DocumentScanService: Sendable {
     private let client: APIClient
     private let uploader: FileUploader
 
@@ -52,7 +51,7 @@ public struct DocumentScanService: Sendable {
     /// (unreadable file, bad base64, unsupported format) surface as `.validation`
     /// from the uploader **before** any network I/O; endpoint failures propagate as
     /// the mapped `DeepIDVError` (auth, validation, rate-limit, timeout, …).
-    public func scan(
+    package func scan(
         front: FileInput,
         back: FileInput? = nil,
         type: DocumentType = .auto

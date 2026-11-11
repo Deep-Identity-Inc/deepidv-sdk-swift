@@ -91,6 +91,15 @@ photos cut to the capture frame.
   need to add their own.
 - The anti-cheat check's error screen shows our own wording instead of the
   server's message.
+- The SDK's internal service and request types (`DocumentScanService`,
+  `IdentityVerifyService`, `IGamingService`, `WorkflowService`,
+  `CustomFaceLivenessService`, `CustomFaceLivenessServicing`,
+  `SessionUploader`, `StepSubmissionResult`, `EmptyStepPayload`,
+  `IDVerificationSubmission`, `SessionUploadSlot`) are no longer public.
+  Apps could never create or obtain them; use the matching `DeepIDVClient`
+  methods and views.
+- The "Protected by TripleLock®" note keeps its lock icon on the same line
+  as its first word when a wide font or a translation wraps it.
 - **Behavior:** `DeepIDVConfig.documentCamera` now defaults to `.front`, for
   kiosks and tablets. Pass `.back` to keep the rear camera on a phone.
 - **Behavior:** `DeepIDVConfig.showsDocumentCaptureIntro` now defaults to
