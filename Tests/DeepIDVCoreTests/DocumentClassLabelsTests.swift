@@ -27,6 +27,22 @@ import Testing
         #expect(DocumentClassCatalog.label(of: "ca_pei_hc") == "Prince Edward Island Health Card")
     }
 
+    @Test func classifierV17ClassesAreNamed() {
+        #expect(DocumentClassCatalog.label(of: "br_id") == "Brazil ID Card")
+        #expect(DocumentClassCatalog.label(of: "ar_dl") == "Argentina Driver's License")
+        #expect(DocumentClassCatalog.label(of: "do_id") == "Dominican Republic ID Card")
+        #expect(DocumentClassCatalog.label(of: "sv_dl") == "El Salvador Driver's License")
+        #expect(DocumentClassCatalog.label(of: "us_pr_dl") == "Puerto Rico Driver's License")
+        #expect(DocumentClassCatalog.label(of: "gb_passport") == "UK Passport")
+        #expect(DocumentClassCatalog.label(of: "us_passport_card") == "US Passport Card")
+        #expect(DocumentClassCatalog.label(of: "ca_pr_card") == "Canadian Permanent Resident Card")
+        #expect(DocumentClassCatalog.label(of: "ng_nin") == "Nigeria NIN Slip")
+    }
+
+    @Test func anUnlistedCountryIsNotNamedAfterItsCode() {
+        #expect(DocumentClassCatalog.name(of: "zz_id") == nil, "no kind, no name")
+    }
+
     @Test func everyKnownClassHasAName() {
         for id in DocumentClassCatalog.kinds.keys {
             let label = DocumentClassCatalog.label(of: id)

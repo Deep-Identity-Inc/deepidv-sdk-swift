@@ -47,8 +47,8 @@ package enum HealthPolicy: Sendable, Equatable {
 /// classifier naming it on consecutive frames, and it never flips the
 /// upside-down check.
 package enum DocumentClassCatalog {
-    /// The classes of catalogue split `v20261021`. `no_id` is left out: it is not
-    /// a document.
+    /// The classes of catalogue split `v20261121` (classifier v17). `no_id` is left
+    /// out: it is not a document.
     package static let kinds: [String: DocumentClassKind] = [
         "ca_ab_dl": .driversLicence,
         "ca_ab_dl_2026": .driversLicence,
@@ -131,6 +131,38 @@ package enum DocumentClassCatalog {
         "us_wi_dl": .driversLicence,
         "us_wv_dl": .driversLicence,
         "us_wy_dl": .driversLicence,
+        // Added with classifier v17 (split v20261121-b2d4795b).
+        "ar_dl": .driversLicence,
+        "ar_id": .idCard,
+        "bo_dl": .driversLicence,
+        "bo_id": .idCard,
+        "br_dl": .driversLicence,
+        "br_id": .idCard,
+        "ca_pr_card": .federal,
+        "cl_dl": .driversLicence,
+        "cl_id": .idCard,
+        "co_dl": .driversLicence,
+        "co_id": .idCard,
+        "cr_id": .idCard,
+        "cu_dl": .driversLicence,
+        "cu_id": .idCard,
+        "do_id": .idCard,
+        "ec_id": .idCard,
+        "gb_passport": .passport,
+        "gt_dl": .driversLicence,
+        "gt_id": .idCard,
+        "hn_id": .idCard,
+        "ng_nin": .federal,
+        "pa_dl": .driversLicence,
+        "pa_id": .idCard,
+        "pe_dl": .driversLicence,
+        "pe_id": .idCard,
+        "py_dl": .driversLicence,
+        "py_id": .idCard,
+        "sv_dl": .driversLicence,
+        "us_passport_card": .passport,
+        "us_pr_dl": .driversLicence,
+        "uy_id": .idCard,
         "ca_passport": .passport,
         "us_passport_book": .passport,
     ]
@@ -140,6 +172,7 @@ package enum DocumentClassCatalog {
         "ca_citizenship_card",
         "ca_indian_status_card",
         "ca_nexus_card",
+        "ng_nin",
     ]
 
     package static func kind(of id: String) -> DocumentClassKind? {
