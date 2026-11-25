@@ -56,9 +56,17 @@ extension DocumentClassCatalog {
         case "ca": return canadianRegions[code]
         case "us": return usRegions[code]
         case "gb": return "UK"
-        default: return nil
+        // A national document (`br_id`, `ar_dl`): the country is the region.
+        default: return code == "id" || code == "dl" ? countryNames[country] : nil
         }
     }
+
+    private static let countryNames: [String: String] = [
+        "ar": "Argentina", "bo": "Bolivia", "br": "Brazil", "cl": "Chile", "co": "Colombia",
+        "cr": "Costa Rica", "cu": "Cuba", "do": "Dominican Republic", "ec": "Ecuador",
+        "gt": "Guatemala", "hn": "Honduras", "pa": "Panama", "pe": "Peru", "py": "Paraguay",
+        "sv": "El Salvador", "uy": "Uruguay",
+    ]
 
     /// Classes whose name doesn't follow from their region and kind.
     private static let specialLabels: [String: String] = [
@@ -76,6 +84,9 @@ extension DocumentClassCatalog {
         "us_pr_card": "US Permanent Resident Card",
         "ca_passport": "Canadian Passport",
         "us_passport_book": "US Passport",
+        "us_passport_card": "US Passport Card",
+        "ca_pr_card": "Canadian Permanent Resident Card",
+        "ng_nin": "Nigeria NIN Slip",
     ]
 
     private static let canadianRegions: [String: String] = [
@@ -96,7 +107,8 @@ extension DocumentClassCatalog {
         "ne": "Nebraska", "nv": "Nevada", "nh": "New Hampshire", "nj": "New Jersey",
         "nm": "New Mexico", "ny": "New York", "nc": "North Carolina", "nd": "North Dakota",
         "oh": "Ohio", "ok": "Oklahoma", "or": "Oregon", "pa": "Pennsylvania",
-        "ri": "Rhode Island", "sc": "South Carolina", "sd": "South Dakota", "tn": "Tennessee",
+        "pr": "Puerto Rico", "ri": "Rhode Island", "sc": "South Carolina", "sd": "South Dakota",
+        "tn": "Tennessee",
         "tx": "Texas", "ut": "Utah", "vt": "Vermont", "va": "Virginia", "wa": "Washington",
         "wv": "West Virginia", "wi": "Wisconsin", "wy": "Wyoming",
     ]

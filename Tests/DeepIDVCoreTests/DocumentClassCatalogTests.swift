@@ -6,12 +6,12 @@ import Testing
 @Suite struct DocumentClassCatalogTests {
     @Test func theCatalogueIsPinnedToItsSplit() {
         let kinds = DocumentClassCatalog.kinds
-        #expect(kinds.count == 83)
-        #expect(kinds.values.filter { $0 == .driversLicence }.count == 60)
-        #expect(kinds.values.filter { $0 == .federal }.count == 10)
+        #expect(kinds.count == 114)
+        #expect(kinds.values.filter { $0 == .driversLicence }.count == 72)
+        #expect(kinds.values.filter { $0 == .federal }.count == 12)
         #expect(kinds.values.filter { $0 == .healthCard }.count == 8)
-        #expect(kinds.values.filter { $0 == .idCard }.count == 3)
-        #expect(kinds.values.filter { $0 == .passport }.count == 2)
+        #expect(kinds.values.filter { $0 == .idCard }.count == 18)
+        #expect(kinds.values.filter { $0 == .passport }.count == 4)
         #expect(kinds["no_id"] == nil)
     }
 
@@ -37,6 +37,17 @@ import Testing
             "ca_firearms_license_new": .firearm,
             "ca_passport": .passport,
             "us_passport_book": .passport,
+            // classifier v17
+            "br_dl": .driversLicence,
+            "sv_dl": .driversLicence,
+            "us_pr_dl": .driversLicence,
+            "br_id": .national,
+            "cr_id": .national,
+            "do_id": .national,
+            "ng_nin": .national,
+            "gb_passport": .passport,
+            "us_passport_card": .passport,
+            "ca_pr_card": .permanentResident,
         ]
         for (id, group) in expected {
             #expect(DocumentClassCatalog.group(of: id) == group, "\(id)")

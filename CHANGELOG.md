@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Recognizes the document classes of classifier v17: Latin American ID cards
+  and driver's licenses (Argentina, Bolivia, Brazil, Chile, Colombia, Costa
+  Rica, Cuba, Dominican Republic, Ecuador, El Salvador, Guatemala, Honduras,
+  Panama, Paraguay, Peru, Uruguay), the Puerto Rico driver's license, the UK
+  passport, the US passport card, the Canadian permanent resident card and the
+  Nigerian NIN slip. They are named on screen in English, Spanish and French,
+  and confirm the picked document like any other class. Before, the classifier
+  could name them but capture never confirmed them.
+
 ## [1.3.0] - 2026-11-10
 
 A redesigned capture experience: recognized ID cards and passports, one
