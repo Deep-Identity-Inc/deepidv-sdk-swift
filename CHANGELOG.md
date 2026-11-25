@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-11-24
+
+Recognizes 31 more documents: Latin American ID cards and driver's licenses,
+the UK passport, the US passport card, the Canadian PR card, the Nigerian NIN
+slip and the Puerto Rico driver's license. No API changes.
+
 ### Added
 
 - Recognizes the document classes of classifier v17: Latin American ID cards
@@ -261,7 +267,8 @@ Initial public release.
 - Typed errors (`DeepIDVError`) and camera-permission handling with a Settings
   deep link.
 
-[Unreleased]: https://github.com/Deep-Identity-Inc/deepidv-sdk-swift/compare/1.3.0...HEAD
+[Unreleased]: https://github.com/Deep-Identity-Inc/deepidv-sdk-swift/compare/1.3.1...HEAD
+[1.3.1]: https://github.com/Deep-Identity-Inc/deepidv-sdk-swift/compare/1.3.0...1.3.1
 [1.3.0]: https://github.com/Deep-Identity-Inc/deepidv-sdk-swift/compare/1.2.1...1.3.0
 [1.2.1]: https://github.com/Deep-Identity-Inc/deepidv-sdk-swift/compare/1.2.0...1.2.1
 [1.2.0]: https://github.com/Deep-Identity-Inc/deepidv-sdk-swift/compare/1.1.0...1.2.0
